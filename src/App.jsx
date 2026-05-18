@@ -236,6 +236,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   const [uberPreview, setUberPreview] = useState("");
   const [fuelPreview, setFuelPreview] = useState("");
   const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(arDate());
 
   const myRecords = records.filter(r => r.driver_id === driver.id).sort((a, b) => b.date.localeCompare(a.date));
   const driverPct = (driver.pct ?? 40) / 100;
@@ -269,23 +270,14 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
     else { setFuelImg({ b64, mt: file.type }); setFuelPreview(url); }
   };
 
-  const calculate = async () => {
-    if (!uberAmt && !uberImg) { showToast("Subí la foto de Uber o ingresá el monto"); return; }
-    setLoading(true);
-    try {
-      let ua = parseFloat(uberAmt) || 0;
-      let fa = parseFloat(fuelAmt) || 0;
-      if (uberImg && !uberAmt) ua = await readImage(uberImg.b64, uberImg.mt, "uber");
-      if (fuelImg && !fuelAmt) fa = await readImage(fuelImg.b64, fuelImg.mt, "fuel");
-      setUberAmt(String(ua)); setFuelAmt(String(fa));
-      setScreen("confirm");
-    } catch { showToast("Error al leer imágenes. Ingresá los montos manualmente."); }
-    setLoading(false);
+  const calculate = () => {
+    if (!uberAmt && parseFloat(uberAmt) === 0) { showToast("Ingresá el monto de Uber"); return; }
+    setScreen("confirm");
   };
 
   const submit = async () => {
     const rec = {
-      id: Date.now().toString(), date: arDate(), week: weekOf(arDate()), month: monthOf(arDate()),
+      id: Date.now().toString(), date: selectedDate, week: weekOf(selectedDate), month: monthOf(selectedDate),
       driver_id: driver.id, vehicle_id: vehicleId,
       uber: parseFloat(uberAmt) || 0, particular: parseFloat(particular) || 0,
       facturado: total, combustible: fuel, neto, ganancia: ownerCut, chofer: driverCut,
@@ -296,7 +288,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       setRecords(prev => [...prev, rec]);
       showToast("Enviado al dueño ✓");
       setScreen("form");
-      setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular("");
+      setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular(""); setSelectedDate(arDate());
       setUberImg(null); setFuelImg(null); setUberPreview(""); setFuelPreview("");
     } catch { showToast("Error al guardar. Intentá de nuevo."); }
   };
@@ -361,6 +353,8 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
         {screen === "form" && (
           <div style={{ ...card, borderColor: C.accent + "33" }}>
             <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 16 }}>Cargar turno de hoy</div>
+            <label style={lbl}>Fecha</label>
+            <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} style={{ ...inp, marginBottom: 16 }} />
             <label style={lbl}>Vehículo</label>
             <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} style={{ ...inp, marginBottom: 16 }}>
               <option value="">Seleccioná tu vehículo...</option>
@@ -369,22 +363,20 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
             <label style={lbl}>📱 Captura de Uber</label>
             <ImgUpload preview={uberPreview} label="Subir captura de Uber" onChange={f => handleImg(f, "uber")} />
             <label style={lbl}>Monto Uber $</label>
-            <input type="number" value={uberAmt} onChange={e => setUberAmt(e.target.value)} placeholder={uberImg ? "La IA lo leerá de la foto" : "0"} style={{ ...inp, marginBottom: 16 }} />
+            <input type="number" value={uberAmt} onChange={e => setUberAmt(e.target.value)} placeholder="0" style={{ ...inp, marginBottom: 16 }} />
             <label style={lbl}>🚗 Viajes particulares $ (opcional)</label>
             <input type="number" value={particular} onChange={e => setParticular(e.target.value)} placeholder="0" style={{ ...inp, marginBottom: 16 }} />
             <label style={lbl}>⛽ Ticket de combustible</label>
             <ImgUpload preview={fuelPreview} label="Subir foto del ticket" onChange={f => handleImg(f, "fuel")} />
             <label style={lbl}>Monto combustible $</label>
-            <input type="number" value={fuelAmt} onChange={e => setFuelAmt(e.target.value)} placeholder={fuelImg ? "La IA lo leerá de la foto" : "0"} style={{ ...inp, marginBottom: 20 }} />
+            <input type="number" value={fuelAmt} onChange={e => setFuelAmt(e.target.value)} placeholder="0" style={{ ...inp, marginBottom: 20 }} />
             {total > 0 && (
               <div style={{ background: C.bg, borderRadius: 10, padding: 12, marginBottom: 16, border: `1px solid ${C.border}` }}>
                 <Row label="Neto" val={fmt(neto)} />
                 <Row label={"Tu parte (" + (driver.pct ?? 40) + "%)"} val={fmt(driverCut)} color={C.teal} bold />
               </div>
             )}
-            <button onClick={calculate} disabled={loading} style={{ ...btn(), opacity: loading ? 0.7 : 1 }}>
-              {loading ? "Leyendo imágenes..." : "Calcular mis ganancias →"}
-            </button>
+            <button onClick={calculate} style={btn()}>Calcular mis ganancias →</button>
           </div>
         )}
 
