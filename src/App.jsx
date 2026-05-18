@@ -5,22 +5,23 @@ const SUPA_URL = "https://jlkvrjaojvncwzwzdurx.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impsa3ZyamFvanZuY3d6d3pkdXJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNjAxMjMsImV4cCI6MjA5NDYzNjEyM30.pBKoWOrcqcLog_nOiwYaZeQI_23X2bwe3FVghc71A2o";
 
 const supa = async (path, method = "GET", body = null) => {
-  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
+  const headers = {
+    "apikey": SUPA_KEY,
+    "Authorization": "Bearer " + SUPA_KEY,
+    "Content-Type": "application/json",
+  };
+  if (method === "POST") headers["Prefer"] = "return=representation";
+  if (method === "PATCH") headers["Prefer"] = "return=representation";
+  const res = await fetch(SUPA_URL + "/rest/v1/" + path, {
     method,
-    headers: {
-      "apikey": SUPA_KEY,
-      "Authorization": `Bearer ${SUPA_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": method === "POST" ? "return=representation" : "",
-    },
+    headers,
     body: body ? JSON.stringify(body) : null,
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err);
-  }
   if (res.status === 204) return null;
-  return res.json();
+  const text = await res.text();
+  if (!res.ok) throw new Error(text);
+  if (!text) return null;
+  return JSON.parse(text);
 };
 
 const db = {
