@@ -126,16 +126,17 @@ export default function App() {
     setLoading(true);
     try {
       const [d, v, r, e, o] = await Promise.all([
-        db.get("drivers"),
-        db.get("vehicles"),
-        db.get("records"),
-        db.get("expenses"),
-        db.get("dayoffs"),
+        db.get("drivers").catch(() => []),
+        db.get("vehicles").catch(() => []),
+        db.get("records").catch(() => []),
+        db.get("expenses").catch(() => []),
+        db.get("dayoffs").catch(() => []),
       ]);
       setDrivers(d || []);
-      // If no vehicles, insert defaults
       if (!v || v.length === 0) {
-        await Promise.all(DEFAULT_VEHICLES.map(veh => db.insert("vehicles", veh)));
+        try {
+          await Promise.all(DEFAULT_VEHICLES.map(veh => db.insert("vehicles", veh)));
+        } catch {}
         setVehicles(DEFAULT_VEHICLES);
       } else {
         setVehicles(v);
@@ -144,7 +145,7 @@ export default function App() {
       setExpenses(e || []);
       setDayoffs(o || []);
     } catch (err) {
-      showToast("Error al conectar con la base de datos");
+      console.error(err);
     }
     setLoading(false);
   };
