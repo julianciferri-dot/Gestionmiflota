@@ -1,28 +1,47 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 
-// ─── Storage ──────────────────────────────────────────────────────────────────
-const K = {
-  records: "flota4-records",
-  drivers: "flota4-drivers",
-  vehicles: "flota4-vehicles",
-  expenses: "flota4-expenses",
-  dayoffs: "flota4-dayoffs",
-  ownerPin: "flota4-owner-pin",
+// ─── Supabase ─────────────────────────────────────────────────────────────────
+const SUPA_URL = "https://jlkvrjaojvncwzwzdurx.supabase.co";
+const SUPA_KEY = "sb_publishable_foidTawurVVyHqTP4kpkTg_gmBJMeFF";
+
+const supa = async (path, method = "GET", body = null) => {
+  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      "apikey": SUPA_KEY,
+      "Authorization": `Bearer ${SUPA_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": method === "POST" ? "return=representation" : "",
+    },
+    body: body ? JSON.stringify(body) : null,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+  if (res.status === 204) return null;
+  return res.json();
 };
 
-const DEFAULT_VEHICLES = [
-  { id: "v1", name: "Volkswagen Virtus AH401ZN", type: "own", ownerPct: 100 },
-  { id: "v2", name: "Fiat Cronos AH668PJ", type: "own", ownerPct: 100 },
-  { id: "v3", name: "Chevrolet Prisma AB331TM", type: "own", ownerPct: 100 },
-  { id: "v4", name: "Volkswagen Gol Trend PQX715", type: "own", ownerPct: 100 },
-  { id: "v5", name: "Fiat Cronos AH692DD", type: "third", ownerPct: 25 },
-  { id: "v6", name: "Nissan Versa AC432BM", type: "third", ownerPct: 25 },
-  { id: "v7", name: "Toyota Corolla NAA803", type: "third", ownerPct: 25 },
-  { id: "v8", name: "Volkswagen Gol Trend AC387NY", type: "third", ownerPct: 30 },
-];
+const db = {
+  get: (table, query = "") => supa(`${table}?${query}&order=created_at.asc`),
+  insert: (table, data) => supa(table, "POST", data),
+  update: (table, id, data) => supa(`${table}?id=eq.${id}`, "PATCH", data),
+  delete: (table, id) => supa(`${table}?id=eq.${id}`, "DELETE"),
+  upsert: (table, data) => supa(table, "POST", data),
+};
 
-const load = (key, def) => { try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; } };
-const persist = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+// ─── Default vehicles ─────────────────────────────────────────────────────────
+const DEFAULT_VEHICLES = [
+  { id: "v1", name: "Volkswagen Virtus AH401ZN", type: "own", owner_pct: 100 },
+  { id: "v2", name: "Fiat Cronos AH668PJ", type: "own", owner_pct: 100 },
+  { id: "v3", name: "Chevrolet Prisma AB331TM", type: "own", owner_pct: 100 },
+  { id: "v4", name: "Volkswagen Gol Trend PQX715", type: "own", owner_pct: 100 },
+  { id: "v5", name: "Fiat Cronos AH692DD", type: "third", owner_pct: 25 },
+  { id: "v6", name: "Nissan Versa AC432BM", type: "third", owner_pct: 25 },
+  { id: "v7", name: "Toyota Corolla NAA803", type: "third", owner_pct: 25 },
+  { id: "v8", name: "Volkswagen Gol Trend AC387NY", type: "third", owner_pct: 30 },
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n || 0);
@@ -49,6 +68,10 @@ const toBase64 = (file) => new Promise((res, rej) => {
   r.readAsDataURL(file);
 });
 
+const OWNER_PIN_KEY = "mf-owner-pin";
+const getOwnerPin = () => localStorage.getItem(OWNER_PIN_KEY) || "1234";
+const setOwnerPin = (p) => localStorage.setItem(OWNER_PIN_KEY, p);
+
 async function readImage(base64, mediaType, type) {
   const prompt = type === "uber"
     ? "Captura de Uber de un chofer argentino. Extraé el monto TOTAL ganado del día en pesos. Respondé SOLO con el número sin símbolos. Si no podés, respondé 0."
@@ -73,7 +96,7 @@ async function readImage(base64, mediaType, type) {
 const C = {
   bg: "#070b14", surface: "#0e1525", hi: "#151f35",
   border: "#1e2d50", accent: "#f59e0b", teal: "#14b8a6",
-  red: "#f43f5e", green: "#22c55e", text: "#e2e8f0", muted: "#64748b", white: "#fff",
+  red: "#f43f5e", text: "#e2e8f0", muted: "#64748b", white: "#fff",
 };
 
 const inp = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", color: C.text, fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" };
@@ -85,32 +108,68 @@ const btn = (bg, fg) => ({ width: "100%", background: bg || C.accent, border: "n
 // ROOT
 // ═════════════════════════════════════════════════════════════════════════════
 export default function App() {
-  const [drivers, setDrivers] = useState(() => load(K.drivers, []));
-  const [vehicles, setVehicles] = useState(() => load(K.vehicles, DEFAULT_VEHICLES));
-  const [records, setRecords] = useState(() => load(K.records, []));
-  const [expenses, setExpenses] = useState(() => load(K.expenses, []));
-  const [dayoffs, setDayoffs] = useState(() => load(K.dayoffs, []));
-  const [ownerPin, setOwnerPin] = useState(() => load(K.ownerPin, "1234"));
+  const [drivers, setDrivers] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [dayoffs, setDayoffs] = useState([]);
+  const [ownerPin, setOwnerPinState] = useState(getOwnerPin());
   const [view, setView] = useState("login");
   const [currentDriver, setCurrentDriver] = useState(null);
   const [toast, setToast] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const saveDrivers = (d) => { setDrivers(d); persist(K.drivers, d); };
-  const saveVehicles = (v) => { setVehicles(v); persist(K.vehicles, v); };
-  const saveRecords = (r) => { setRecords(r); persist(K.records, r); };
-  const saveExpenses = (e) => { setExpenses(e); persist(K.expenses, e); };
-  const saveDayoffs = (d) => { setDayoffs(d); persist(K.dayoffs, d); };
-  const saveOwnerPin = (p) => { setOwnerPin(p); persist(K.ownerPin, p); };
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 3000); };
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const [d, v, r, e, o] = await Promise.all([
+        db.get("drivers"),
+        db.get("vehicles"),
+        db.get("records"),
+        db.get("expenses"),
+        db.get("dayoffs"),
+      ]);
+      setDrivers(d || []);
+      // If no vehicles, insert defaults
+      if (!v || v.length === 0) {
+        await Promise.all(DEFAULT_VEHICLES.map(veh => db.insert("vehicles", veh)));
+        setVehicles(DEFAULT_VEHICLES);
+      } else {
+        setVehicles(v);
+      }
+      setRecords(r || []);
+      setExpenses(e || []);
+      setDayoffs(o || []);
+    } catch (err) {
+      showToast("Error al conectar con la base de datos");
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  const saveOwnerPinFn = (p) => { setOwnerPinState(p); setOwnerPin(p); };
+
   const dName = (id) => drivers.find(d => d.id === id)?.name || id;
   const vName = (id) => vehicles.find(v => v.id === id)?.name || id;
+
+  if (loading) return (
+    <div style={{ fontFamily: "'DM Mono', monospace", background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+      <div style={{ fontSize: 44, marginBottom: 16 }}>🚕</div>
+      <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 24, fontWeight: 800, color: C.white, marginBottom: 12 }}>Mi Flota</div>
+      <div style={{ color: C.muted, fontSize: 13 }}>Conectando...</div>
+    </div>
+  );
 
   return (
     <div style={{ fontFamily: "'DM Mono', monospace", background: C.bg, minHeight: "100vh", maxWidth: 480, margin: "0 auto" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
       {view === "login" && <LoginScreen drivers={drivers} ownerPin={ownerPin} onDriver={(d) => { setCurrentDriver(d); setView("driver"); }} onOwner={() => setView("owner")} />}
-      {view === "driver" && <DriverScreen driver={currentDriver} vehicles={vehicles} records={records} saveRecords={saveRecords} dayoffs={dayoffs} saveDayoffs={saveDayoffs} showToast={showToast} onBack={() => setView("login")} vName={vName} />}
-      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} saveDayoffs={saveDayoffs} saveDrivers={saveDrivers} saveVehicles={saveVehicles} saveRecords={saveRecords} saveExpenses={saveExpenses} ownerPin={ownerPin} saveOwnerPin={saveOwnerPin} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} />}
+      {view === "driver" && <DriverScreen driver={currentDriver} vehicles={vehicles} records={records} dayoffs={dayoffs} setDayoffs={setDayoffs} setRecords={setRecords} showToast={showToast} onBack={() => setView("login")} vName={vName} />}
+      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} setDrivers={setDrivers} setVehicles={setVehicles} setRecords={setRecords} setExpenses={setExpenses} setDayoffs={setDayoffs} ownerPin={ownerPin} saveOwnerPin={saveOwnerPinFn} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} reload={loadAll} />}
       {toast && <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", background: C.accent, color: "#000", padding: "12px 24px", borderRadius: 100, fontSize: 14, fontWeight: 700, zIndex: 999, whiteSpace: "nowrap" }}>{toast}</div>}
     </div>
   );
@@ -164,7 +223,7 @@ function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
 // ═════════════════════════════════════════════════════════════════════════════
 // DRIVER SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
-function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDayoffs, showToast, onBack, vName }) {
+function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecords, showToast, onBack, vName }) {
   const [screen, setScreen] = useState("form");
   const [vehicleId, setVehicleId] = useState("");
   const [uberAmt, setUberAmt] = useState("");
@@ -176,13 +235,29 @@ function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDay
   const [fuelPreview, setFuelPreview] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const myRecords = records.filter(r => r.driverId === driver.id).sort((a, b) => b.date.localeCompare(a.date));
+  const myRecords = records.filter(r => r.driver_id === driver.id).sort((a, b) => b.date.localeCompare(a.date));
   const driverPct = (driver.pct ?? 40) / 100;
   const total = (parseFloat(uberAmt) || 0) + (parseFloat(particular) || 0);
   const fuel = parseFloat(fuelAmt) || 0;
   const neto = total - fuel;
   const driverCut = neto * driverPct;
   const ownerCut = neto * (1 - driverPct);
+
+  const todayStr = arDate();
+  const hasDayoff = dayoffs.some(d => d.driver_id === driver.id && d.date === todayStr);
+
+  const toggleDayoff = async () => {
+    if (hasDayoff) {
+      const d = dayoffs.find(o => o.driver_id === driver.id && o.date === todayStr);
+      await db.delete("dayoffs", d.id);
+      setDayoffs(dayoffs.filter(o => o.id !== d.id));
+    } else {
+      const newD = { id: Date.now().toString(), driver_id: driver.id, date: todayStr };
+      await db.insert("dayoffs", newD);
+      setDayoffs([...dayoffs, newD]);
+      showToast("Franco marcado ✓");
+    }
+  };
 
   const handleImg = async (file, type) => {
     if (!file) return;
@@ -206,19 +281,22 @@ function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDay
     setLoading(false);
   };
 
-  const submit = () => {
+  const submit = async () => {
     const rec = {
       id: Date.now().toString(), date: arDate(), week: weekOf(arDate()), month: monthOf(arDate()),
-      driverId: driver.id, vehicleId,
+      driver_id: driver.id, vehicle_id: vehicleId,
       uber: parseFloat(uberAmt) || 0, particular: parseFloat(particular) || 0,
       facturado: total, combustible: fuel, neto, ganancia: ownerCut, chofer: driverCut,
-      driverPct: driver.pct ?? 40, submitted: new Date().toISOString(),
+      driver_pct: driver.pct ?? 40,
     };
-    saveRecords([...records, rec]);
-    showToast("Enviado al dueño ✓");
-    setScreen("form");
-    setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular("");
-    setUberImg(null); setFuelImg(null); setUberPreview(""); setFuelPreview("");
+    try {
+      await db.insert("records", rec);
+      setRecords(prev => [...prev, rec]);
+      showToast("Enviado al dueño ✓");
+      setScreen("form");
+      setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular("");
+      setUberImg(null); setFuelImg(null); setUberPreview(""); setFuelPreview("");
+    } catch { showToast("Error al guardar. Intentá de nuevo."); }
   };
 
   return (
@@ -236,24 +314,22 @@ function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDay
         </div>
       </div>
       <div style={{ padding: 20 }}>
-        {/* Day off button */}
-        {screen === "form" && (() => {
-          const todayStr = arDate();
-          const hasDayoff = dayoffs.some(d => d.driverId === driver.id && d.date === todayStr);
-          return hasDayoff ? (
+        {screen === "form" && (
+          hasDayoff ? (
             <div style={{ background: C.hi, border: `1px solid ${C.teal}44`, borderRadius: 12, padding: 14, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 13, color: C.teal, fontWeight: 700 }}>✅ Hoy marcado como franco</div>
                 <div style={{ fontSize: 11, color: C.muted }}>No aparecerás en el recordatorio</div>
               </div>
-              <button onClick={() => saveDayoffs(dayoffs.filter(d => !(d.driverId === driver.id && d.date === todayStr)))} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Quitar</button>
+              <button onClick={toggleDayoff} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Quitar</button>
             </div>
           ) : (
-            <button onClick={() => { saveDayoffs([...dayoffs, { id: Date.now().toString(), driverId: driver.id, date: todayStr }]); showToast("Franco marcado ✓"); }} style={{ ...btn(C.hi, C.teal), border: `1px solid ${C.teal}44`, marginBottom: 16, fontSize: 13 }}>
+            <button onClick={toggleDayoff} style={{ ...btn(C.hi, C.teal), border: `1px solid ${C.teal}44`, marginBottom: 16, fontSize: 13 }}>
               🏖️ Marcar hoy como franco
             </button>
-          );
-        })()}
+          )
+        )}
+
         {screen === "history" && (
           <div>
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Mis registros</div>
@@ -263,7 +339,7 @@ function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDay
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{r.date}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{vName(r.vehicleId)}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{vName(r.vehicle_id)}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 11, color: C.teal }}>Tu parte</div>
@@ -279,6 +355,7 @@ function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDay
             ))}
           </div>
         )}
+
         {screen === "form" && (
           <div style={{ ...card, borderColor: C.accent + "33" }}>
             <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 16 }}>Cargar turno de hoy</div>
@@ -308,6 +385,7 @@ function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDay
             </button>
           </div>
         )}
+
         {screen === "confirm" && (
           <div>
             <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Confirmá los datos</div>
@@ -336,15 +414,15 @@ function DriverScreen({ driver, vehicles, records, saveRecords, dayoffs, saveDay
 // ═════════════════════════════════════════════════════════════════════════════
 // OWNER SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
-function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoffs, saveDrivers, saveVehicles, saveRecords, saveExpenses, ownerPin, saveOwnerPin, onBack, dName, vName, showToast }) {
+function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload }) {
   const TABS = ["Dashboard", "Vehículos", "Choferes", "Gastos", "Config"];
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState("semana");
   const [filterWeek, setFilterWeek] = useState(weekOf(arDate()));
   const [filterMonth, setFilterMonth] = useState(monthOf(arDate()));
-  const [newDrv, setNewDrv] = useState({ name: "", pin: "", vehicleId: "", pct: "40" });
+  const [newDrv, setNewDrv] = useState({ name: "", pin: "", vehicle_id: "", pct: "40" });
   const [newOwnerPin, setNewOwnerPin] = useState(ownerPin);
-  const [newExpense, setNewExpense] = useState({ vehicleId: "", category: "mecanico", description: "", amount: "", date: arDate() });
+  const [newExpense, setNewExpense] = useState({ vehicle_id: "", category: "mecanico", description: "", amount: "", date: arDate() });
 
   const weeks = [...new Set(records.map(r => r.week))].sort().reverse();
   const months = [...new Set(records.map(r => r.month || r.date.slice(0,7)))].sort().reverse();
@@ -359,70 +437,98 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
     return e.date.slice(0,7) === filterMonth;
   });
 
-  // Per vehicle stats
   const vStats = vehicles.map(v => {
-    const rs = filtered.filter(r => r.vehicleId === v.id);
-    const exps = filteredExp.filter(e => e.vehicleId === v.id);
-    const facturado = rs.reduce((a, r) => a + r.facturado, 0);
-    const combustible = rs.reduce((a, r) => a + r.combustible, 0);
-    const netoChofer = rs.reduce((a, r) => a + r.neto, 0);
-    const otrosGastos = exps.reduce((a, e) => a + e.amount, 0);
-    const gananciaBase = rs.reduce((a, r) => a + r.ganancia, 0);
+    const rs = filtered.filter(r => r.vehicle_id === v.id);
+    const exps = filteredExp.filter(e => e.vehicle_id === v.id);
+    const facturado = rs.reduce((a, r) => a + Number(r.facturado), 0);
+    const combustible = rs.reduce((a, r) => a + Number(r.combustible), 0);
+    const otrosGastos = exps.reduce((a, e) => a + Number(e.amount), 0);
+    const gananciaBase = rs.reduce((a, r) => a + Number(r.ganancia), 0);
     const gananciaReal = gananciaBase - otrosGastos;
-    const choferes = [...new Set(rs.map(r => r.driverId))];
-    return { ...v, facturado, combustible, netoChofer, otrosGastos, gananciaBase, gananciaReal, dias: rs.length, choferes, records: rs };
+    const choferes = [...new Set(rs.map(r => r.driver_id))];
+    return { ...v, facturado, combustible, otrosGastos, gananciaBase, gananciaReal, dias: rs.length, choferes, records: rs };
   });
 
   const totalGanancia = vStats.reduce((a, v) => a + v.gananciaReal, 0);
   const totalFacturado = vStats.reduce((a, v) => a + v.facturado, 0);
-  const totalGastos = filteredExp.reduce((a, e) => a + e.amount, 0);
+  const totalGastos = filteredExp.reduce((a, e) => a + Number(e.amount), 0);
 
-  // Driver stats
   const dStats = drivers.map(d => {
-    const rs = filtered.filter(r => r.driverId === d.id);
+    const rs = filtered.filter(r => r.driver_id === d.id);
+    const fac = rs.reduce((a, r) => a + Number(r.facturado), 0);
     return {
       ...d,
-      facturado: rs.reduce((a, r) => a + r.facturado, 0),
-      combustible: rs.reduce((a, r) => a + r.combustible, 0),
-      neto: rs.reduce((a, r) => a + r.neto, 0),
-      chofer: rs.reduce((a, r) => a + r.chofer, 0),
-      debe: rs.reduce((a, r) => a + r.ganancia, 0),
+      facturado: fac,
+      combustible: rs.reduce((a, r) => a + Number(r.combustible), 0),
+      neto: rs.reduce((a, r) => a + Number(r.neto), 0),
+      chofer: rs.reduce((a, r) => a + Number(r.chofer), 0),
+      debe: rs.reduce((a, r) => a + Number(r.ganancia), 0),
       dias: rs.length,
-      promDiario: rs.length > 0 ? rs.reduce((a, r) => a + r.facturado, 0) / rs.length : 0,
+      promDiario: rs.length > 0 ? fac / rs.length : 0,
     };
   }).filter(d => d.facturado > 0).sort((a, b) => b.facturado - a.facturado);
 
-  const addDriver = () => {
+  const addDriver = async () => {
     if (!newDrv.name.trim() || newDrv.pin.length !== 4) { showToast("Nombre y PIN de 4 dígitos requeridos"); return; }
     if (drivers.some(d => d.pin === newDrv.pin)) { showToast("Ese PIN ya existe"); return; }
     const pct = Math.min(100, Math.max(0, parseFloat(newDrv.pct) || 40));
-    saveDrivers([...drivers, { id: Date.now().toString(), ...newDrv, pct }]);
-    setNewDrv({ name: "", pin: "", vehicleId: "", pct: "40" });
-    showToast("Chofer agregado ✓");
+    const d = { id: Date.now().toString(), ...newDrv, pct };
+    try {
+      await db.insert("drivers", d);
+      setDrivers(prev => [...prev, d]);
+      setNewDrv({ name: "", pin: "", vehicle_id: "", pct: "40" });
+      showToast("Chofer agregado ✓");
+    } catch { showToast("Error al agregar chofer"); }
   };
 
-  const updateDriver = (id, changes) => saveDrivers(drivers.map(d => d.id === id ? { ...d, ...changes } : d));
+  const deleteDriver = async (id) => {
+    await db.delete("drivers", id);
+    setDrivers(prev => prev.filter(d => d.id !== id));
+  };
 
-  const addExpense = () => {
-    if (!newExpense.vehicleId || !newExpense.amount) { showToast("Completá todos los campos"); return; }
+  const updateDriver = async (id, changes) => {
+    await db.update("drivers", id, changes);
+    setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...changes } : d));
+  };
+
+  const addExpense = async () => {
+    if (!newExpense.vehicle_id || !newExpense.amount) { showToast("Completá todos los campos"); return; }
     const e = { id: Date.now().toString(), ...newExpense, amount: parseFloat(newExpense.amount) || 0 };
-    saveExpenses([...expenses, e]);
-    setNewExpense({ vehicleId: "", category: "mecanico", description: "", amount: "", date: arDate() });
-    showToast("Gasto registrado ✓");
+    try {
+      await db.insert("expenses", e);
+      setExpenses(prev => [...prev, e]);
+      setNewExpense({ vehicle_id: "", category: "mecanico", description: "", amount: "", date: arDate() });
+      showToast("Gasto registrado ✓");
+    } catch { showToast("Error al guardar gasto"); }
+  };
+
+  const deleteExpense = async (id) => {
+    await db.delete("expenses", id);
+    setExpenses(prev => prev.filter(e => e.id !== id));
+  };
+
+  const toggleDayoff = async (driverId) => {
+    const todayStr = arDate();
+    const existing = dayoffs.find(o => o.driver_id === driverId && o.date === todayStr);
+    if (existing) {
+      await db.delete("dayoffs", existing.id);
+      setDayoffs(prev => prev.filter(o => o.id !== existing.id));
+    } else {
+      const newD = { id: Date.now().toString(), driver_id: driverId, date: todayStr };
+      await db.insert("dayoffs", newD);
+      setDayoffs(prev => [...prev, newD]);
+    }
   };
 
   const sendReminder = () => {
     const yesterday = arDate(-1);
-    const withDayoff = drivers.filter(d => dayoffs.some(o => o.driverId === d.id && o.date === yesterday));
-    const loaded = drivers.filter(d => records.some(r => r.driverId === d.id && r.date === yesterday));
-    const missing = drivers.filter(d => !records.some(r => r.driverId === d.id && r.date === yesterday) && !dayoffs.some(o => o.driverId === d.id && o.date === yesterday));
+    const withDayoff = drivers.filter(d => dayoffs.some(o => o.driver_id === d.id && o.date === yesterday));
+    const loaded = drivers.filter(d => records.some(r => r.driver_id === d.id && r.date === yesterday));
+    const missing = drivers.filter(d => !records.some(r => r.driver_id === d.id && r.date === yesterday) && !dayoffs.some(o => o.driver_id === d.id && o.date === yesterday));
     const fechaStr = new Date(yesterday + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
     let msg = "📋 *Recordatorio - " + fechaStr + "*\n\n";
-    if (missing.length === 0) {
-      msg += "✅ ¡Todos cargaron o tenían franco! Gracias.";
-    } else {
-      msg += "❌ *No cargaron aún:*\n" + missing.map(d => "• " + d.name).join("\n");
-    }
+    if (missing.length === 0) msg += "✅ ¡Todos cargaron o tenían franco! Gracias.";
+    else msg += "❌ *No cargaron aún:*\n" + missing.map(d => "• " + d.name).join("\n");
     if (loaded.length > 0) msg += "\n\n✅ *Ya cargaron:*\n" + loaded.map(d => "• " + d.name).join("\n");
     if (withDayoff.length > 0) msg += "\n\n🏖️ *Franco:*\n" + withDayoff.map(d => "• " + d.name).join("\n");
     if (missing.length > 0) msg += "\n\nPor favor carguen su facturación de ayer 🙏";
@@ -438,14 +544,16 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      {/* Header */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "16px 20px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>Panel del dueño</div>
             <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: C.white }}>Mi Flota</div>
           </div>
-          <button onClick={onBack} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={reload} style={{ background: C.hi, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.teal, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>↻</button>
+            <button onClick={onBack} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
+          </div>
         </div>
         <div style={{ display: "flex", overflowX: "auto" }}>
           {TABS.map((t, i) => (
@@ -455,8 +563,6 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
       </div>
 
       <div style={{ padding: 20 }}>
-
-        {/* Period filter - shown in Dashboard, Vehículos, Choferes */}
         {tab < 3 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -477,35 +583,26 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
           </div>
         )}
 
-        {/* ── DASHBOARD ── */}
         {tab === 0 && (
           <div>
             <button onClick={sendReminder} style={{ ...btn("#25d366", "#fff"), marginBottom: 16 }}>
               📲 Ver quién no cargó ayer → WhatsApp
             </button>
-
-            {/* Franco management */}
             <div style={{ ...card, marginBottom: 16 }}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Marcar franco para hoy</div>
               {drivers.map(d => {
-                const todayStr = arDate();
-                const hasDayoff = dayoffs.some(o => o.driverId === d.id && o.date === todayStr);
+                const hasDayoff = dayoffs.some(o => o.driver_id === d.id && o.date === arDate());
                 return (
                   <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
                     <div style={{ fontSize: 13, color: hasDayoff ? C.teal : C.text }}>{hasDayoff ? "🏖️ " : ""}{d.name}</div>
-                    <button onClick={() => {
-                      if (hasDayoff) saveDayoffs(dayoffs.filter(o => !(o.driverId === d.id && o.date === todayStr)));
-                      else saveDayoffs([...dayoffs, { id: Date.now().toString(), driverId: d.id, date: todayStr }]);
-                    }} style={{ background: hasDayoff ? C.teal + "22" : C.hi, border: `1px solid ${hasDayoff ? C.teal : C.border}`, borderRadius: 8, padding: "6px 14px", color: hasDayoff ? C.teal : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-                      {hasDayoff ? "Quitar franco" : "Franco"}
+                    <button onClick={() => toggleDayoff(d.id)} style={{ background: hasDayoff ? C.teal + "22" : C.hi, border: `1px solid ${hasDayoff ? C.teal : C.border}`, borderRadius: 8, padding: "6px 14px", color: hasDayoff ? C.teal : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                      {hasDayoff ? "Quitar" : "Franco"}
                     </button>
                   </div>
                 );
               })}
               {drivers.length === 0 && <div style={{ fontSize: 12, color: C.muted }}>No hay choferes cargados</div>}
             </div>
-
-            {/* KPIs */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
               {[
                 { label: "Facturado total", val: totalFacturado, color: C.text },
@@ -519,14 +616,12 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
                 </div>
               ))}
             </div>
-
-            {/* Top vehicles */}
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Ranking de vehículos</div>
             {vStats.filter(v => v.dias > 0).sort((a,b) => b.gananciaReal - a.gananciaReal).map((v, i) => (
               <div key={v.id} style={{ ...card, borderColor: i === 0 ? C.accent + "44" : C.border }}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: v.type === "own" ? C.teal : C.accent, marginBottom: 2 }}>{v.type === "own" ? "🚗 Propio" : "🤝 Tercero " + v.ownerPct + "%"}</div>
+                    <div style={{ fontSize: 11, color: v.type === "own" ? C.teal : C.accent, marginBottom: 2 }}>{v.type === "own" ? "🚗 Propio" : "🤝 Tercero " + v.owner_pct + "%"}</div>
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{v.name}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -545,14 +640,13 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
           </div>
         )}
 
-        {/* ── VEHÍCULOS ── */}
         {tab === 1 && (
           <div>
             {vStats.map(v => (
               <div key={v.id} style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent, marginBottom: 2 }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO · " + v.ownerPct + "% tuyo"}</div>
+                    <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent, marginBottom: 2 }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO · " + v.owner_pct + "% tuyo"}</div>
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white }}>{v.name}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -560,8 +654,6 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: C.accent }}>{fmt(v.gananciaReal)}</div>
                   </div>
                 </div>
-
-                {/* Stats grid */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
                   {[
                     { label: "Facturado", val: fmt(v.facturado), color: C.text },
@@ -575,16 +667,13 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
                     </div>
                   ))}
                 </div>
-
-                {/* Choferes de este vehículo */}
                 {v.choferes.length > 0 && (
                   <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
                     <div style={{ fontSize: 10, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Choferes</div>
                     {v.choferes.map(dId => {
-                      const drs = v.records.filter(r => r.driverId === dId);
-                      const df = drs.reduce((a, r) => a + r.facturado, 0);
-                      const dn = drs.reduce((a, r) => a + r.neto, 0);
-                      const dc = drs.reduce((a, r) => a + r.chofer, 0);
+                      const drs = v.records.filter(r => r.driver_id === dId);
+                      const dn = drs.reduce((a, r) => a + Number(r.neto), 0);
+                      const dc = drs.reduce((a, r) => a + Number(r.chofer), 0);
                       return (
                         <div key={dId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
                           <div>
@@ -600,35 +689,26 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
                     })}
                   </div>
                 )}
-
                 {v.dias === 0 && <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: 10 }}>Sin actividad en este período</div>}
               </div>
             ))}
           </div>
         )}
 
-        {/* ── CHOFERES ── */}
         {tab === 2 && (
           <div>
-            {/* Add driver form */}
             <div style={{ ...card, marginBottom: 20 }}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Agregar chofer</div>
               <label style={lbl}>Nombre</label>
               <input value={newDrv.name} onChange={e => setNewDrv({ ...newDrv, name: e.target.value })} placeholder="Nombre completo" style={{ ...inp, marginBottom: 10 }} />
               <label style={lbl}>PIN (4 dígitos)</label>
               <input type="number" value={newDrv.pin} onChange={e => setNewDrv({ ...newDrv, pin: e.target.value.slice(0, 4) })} placeholder="Ej: 4821" style={{ ...inp, marginBottom: 10 }} />
-              <label style={lbl}>Vehículo asignado (opcional)</label>
-              <select value={newDrv.vehicleId} onChange={e => setNewDrv({ ...newDrv, vehicleId: e.target.value })} style={{ ...inp, marginBottom: 10 }}>
-                <option value="">Sin asignar</option>
-                {vehicles.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </select>
               <label style={lbl}>Porcentaje del chofer (%)</label>
               <input type="number" min="0" max="100" value={newDrv.pct} onChange={e => setNewDrv({ ...newDrv, pct: e.target.value })} placeholder="40" style={{ ...inp, marginBottom: 6 }} />
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>El dueño recibe el {100 - (parseFloat(newDrv.pct) || 0)}%</div>
               <button onClick={addDriver} style={btn()}>+ Agregar chofer</button>
             </div>
 
-            {/* Ranking */}
             {dStats.length > 0 && (
               <div>
                 <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Estadísticas del período</div>
@@ -656,24 +736,19 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
               </div>
             )}
 
-            {/* Edit drivers */}
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", margin: "20px 0 12px" }}>Editar choferes</div>
             {drivers.map(d => (
-              <DriverCard key={d.id} d={d} vehicles={vehicles} vName={vName} drivers={drivers}
-                onUpdate={(changes) => updateDriver(d.id, changes)}
-                onDelete={() => saveDrivers(drivers.filter(x => x.id !== d.id))}
-                showToast={showToast} />
+              <DriverCard key={d.id} d={d} drivers={drivers} onUpdate={(changes) => updateDriver(d.id, changes)} onDelete={() => deleteDriver(d.id)} showToast={showToast} />
             ))}
           </div>
         )}
 
-        {/* ── GASTOS ── */}
         {tab === 3 && (
           <div>
             <div style={card}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Registrar gasto</div>
               <label style={lbl}>Vehículo</label>
-              <select value={newExpense.vehicleId} onChange={e => setNewExpense({ ...newExpense, vehicleId: e.target.value })} style={{ ...inp, marginBottom: 10 }}>
+              <select value={newExpense.vehicle_id} onChange={e => setNewExpense({ ...newExpense, vehicle_id: e.target.value })} style={{ ...inp, marginBottom: 10 }}>
                 <option value="">Seleccioná un vehículo...</option>
                 {vehicles.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
@@ -692,8 +767,6 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
               <input type="date" value={newExpense.date} onChange={e => setNewExpense({ ...newExpense, date: e.target.value })} style={{ ...inp, marginBottom: 14 }} />
               <button onClick={addExpense} style={btn()}>+ Registrar gasto</button>
             </div>
-
-            {/* List of expenses */}
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Historial de gastos</div>
             {expenses.length === 0 && <div style={{ textAlign: "center", padding: 30, color: C.muted }}>No hay gastos registrados</div>}
             {expenses.slice().reverse().map(e => (
@@ -702,11 +775,11 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
                   <div>
                     <div style={{ fontSize: 11, color: C.accent, marginBottom: 2 }}>{catLabel(e.category)}</div>
                     <div style={{ fontSize: 13, color: C.white, fontWeight: 600 }}>{e.description || "Sin descripción"}</div>
-                    <div style={{ fontSize: 11, color: C.muted }}>{vName(e.vehicleId)} · {e.date}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{vName(e.vehicle_id)} · {e.date}</div>
                   </div>
                   <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, color: C.red }}>{fmt(e.amount)}</div>
-                    <button onClick={() => saveExpenses(expenses.filter(x => x.id !== e.id))} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer" }}>×</button>
+                    <button onClick={() => deleteExpense(e.id)} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer" }}>×</button>
                   </div>
                 </div>
               </div>
@@ -714,7 +787,6 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
           </div>
         )}
 
-        {/* ── CONFIG ── */}
         {tab === 4 && (
           <div>
             <div style={card}>
@@ -722,11 +794,6 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
               <label style={lbl}>Nuevo PIN (4 dígitos)</label>
               <input type="number" value={newOwnerPin} onChange={e => setNewOwnerPin(e.target.value.slice(0, 4))} placeholder="4 dígitos" style={{ ...inp, marginBottom: 12 }} />
               <button onClick={() => { if (newOwnerPin.length === 4) { saveOwnerPin(newOwnerPin); showToast("PIN actualizado ✓"); } else showToast("El PIN debe tener 4 dígitos"); }} style={btn()}>Guardar PIN</button>
-            </div>
-            <div style={{ ...card, borderColor: C.red + "44" }}>
-              <div style={{ fontSize: 10, color: C.red, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>Zona de peligro</div>
-              <button onClick={() => { if (window.confirm("¿Borrar TODOS los registros?")) { saveRecords([]); showToast("Registros eliminados"); } }} style={{ ...btn(C.red, C.white), marginBottom: 10 }}>Borrar registros de choferes</button>
-              <button onClick={() => { if (window.confirm("¿Borrar TODOS los gastos?")) { saveExpenses([]); showToast("Gastos eliminados"); } }} style={btn(C.red, C.white)}>Borrar gastos</button>
             </div>
           </div>
         )}
@@ -736,24 +803,21 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, saveDayoff
 }
 
 // ─── Driver Card ──────────────────────────────────────────────────────────────
-function DriverCard({ d, vehicles, vName, onUpdate, onDelete, drivers, showToast }) {
+function DriverCard({ d, drivers, onUpdate, onDelete, showToast }) {
   const [pctVal, setPctVal] = useState(String(d.pct ?? 40));
   const [pinVal, setPinVal] = useState(d.pin);
 
-  const savePct = () => { const val = Math.min(100, Math.max(0, parseFloat(pctVal) || 40)); onUpdate({ pct: val }); showToast("Porcentaje actualizado ✓"); };
-  const savePin = () => {
+  const savePct = async () => { const val = Math.min(100, Math.max(0, parseFloat(pctVal) || 40)); await onUpdate({ pct: val }); showToast("Porcentaje actualizado ✓"); };
+  const savePin = async () => {
     if (pinVal.length !== 4) { showToast("El PIN debe tener 4 dígitos"); return; }
     if (drivers.some(dr => dr.id !== d.id && dr.pin === pinVal)) { showToast("Ese PIN ya lo usa otro chofer"); return; }
-    onUpdate({ pin: pinVal }); showToast("PIN actualizado ✓");
+    await onUpdate({ pin: pinVal }); showToast("PIN actualizado ✓");
   };
 
   return (
     <div style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-        <div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: C.white }}>{d.name}</div>
-          <div style={{ fontSize: 11, color: C.muted }}>{d.vehicleId ? vName(d.vehicleId) : "Sin vehículo asignado"}</div>
-        </div>
+        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: C.white }}>{d.name}</div>
         <button onClick={onDelete} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 22, cursor: "pointer" }}>×</button>
       </div>
       <div style={{ background: C.hi, borderRadius: 10, padding: 12, marginBottom: 10 }}>
