@@ -69,9 +69,9 @@ const toBase64 = (file) => new Promise((res, rej) => {
   r.readAsDataURL(file);
 });
 
-const OWNER_PIN_KEY = "mf-owner-pin";
-const getOwnerPin = () => localStorage.getItem(OWNER_PIN_KEY) || "1234";
-const setOwnerPin = (p) => localStorage.setItem(OWNER_PIN_KEY, p);
+const OWNER_PIN = "1803";
+const getOwnerPin = () => OWNER_PIN;
+const setOwnerPin = (p) => {}; // PIN is fixed in code
 
 async function readImage(base64, mediaType, type) {
   const prompt = type === "uber"
