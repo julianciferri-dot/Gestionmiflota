@@ -411,7 +411,8 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
 function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload }) {
   const TABS = ["Dashboard", "Vehículos", "Choferes", "Gastos", "Config"];
   const [tab, setTab] = useState(0);
-  const [period, setPeriod] = useState("semana");
+  const [period, setPeriod] = useState("dia");
+  const [filterDay, setFilterDay] = useState(arDate());
   const [filterWeek, setFilterWeek] = useState(weekOf(arDate()));
   const [filterMonth, setFilterMonth] = useState(monthOf(arDate()));
   const [newDrv, setNewDrv] = useState({ name: "", pin: "", vehicle_id: "", pct: "40" });
@@ -422,11 +423,13 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   const months = [...new Set(records.map(r => r.month || r.date.slice(0,7)))].sort().reverse();
 
   const filtered = records.filter(r => {
+    if (period === "dia") return r.date === filterDay;
     if (period === "semana") return r.week === filterWeek;
     return (r.month || r.date.slice(0,7)) === filterMonth;
   });
 
   const filteredExp = expenses.filter(e => {
+    if (period === "dia") return e.date === filterDay;
     if (period === "semana") return weekOf(e.date) === filterWeek;
     return e.date.slice(0,7) === filterMonth;
   });
@@ -560,15 +563,20 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         {tab < 3 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <button onClick={() => setPeriod("dia")} style={{ flex: 1, background: period === "dia" ? C.accent : C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px", color: period === "dia" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Día</button>
               <button onClick={() => setPeriod("semana")} style={{ flex: 1, background: period === "semana" ? C.accent : C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px", color: period === "semana" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Semana</button>
               <button onClick={() => setPeriod("mes")} style={{ flex: 1, background: period === "mes" ? C.accent : C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px", color: period === "mes" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Mes</button>
             </div>
-            {period === "semana" ? (
+            {period === "dia" && (
+              <input type="date" value={filterDay} onChange={e => setFilterDay(e.target.value)} style={inp} />
+            )}
+            {period === "semana" && (
               <select value={filterWeek} onChange={e => setFilterWeek(e.target.value)} style={inp}>
                 {weeks.length === 0 && <option value={weekOf(arDate())}>Semana actual</option>}
                 {weeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
               </select>
-            ) : (
+            )}
+            {period === "mes" && (
               <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} style={inp}>
                 {months.length === 0 && <option value={monthOf(arDate())}>{monthOf(arDate())}</option>}
                 {months.map(m => <option key={m} value={m}>{m}</option>)}
