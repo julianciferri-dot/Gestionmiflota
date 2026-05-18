@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 // ─── Supabase ─────────────────────────────────────────────────────────────────
 const SUPA_URL = "https://jlkvrjaojvncwzwzdurx.supabase.co";
-const SUPA_KEY = "sb_publishable_foidTawurVVyHqTP4kpkTg_gmBJMeFF";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impsa3ZyamFvanZuY3d6d3pkdXJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNjAxMjMsImV4cCI6MjA5NDYzNjEyM30.pBKoWOrcqcLog_nOiwYaZeQI_23X2bwe3FVghc71A2o";
 
 const supa = async (path, method = "GET", body = null) => {
   const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
