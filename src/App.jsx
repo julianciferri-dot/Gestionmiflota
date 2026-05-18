@@ -859,7 +859,7 @@ function ImgUpload({ preview, label, onChange }) {
       <div onClick={() => ref.current.click()} style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: preview ? 4 : 20, textAlign: "center", cursor: "pointer", background: C.hi, overflow: "hidden" }}>
         {preview ? <img src={preview} alt="" style={{ width: "100%", borderRadius: 8, maxHeight: 160, objectFit: "cover" }} /> : <div style={{ color: C.muted, fontSize: 13 }}>📸 {label}</div>}
       </div>
-      <input ref={ref} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => e.target.files[0] && onChange(e.target.files[0])} />
+      <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && onChange(e.target.files[0])} />
     </div>
   );
 }
