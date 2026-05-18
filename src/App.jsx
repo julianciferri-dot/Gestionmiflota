@@ -335,9 +335,18 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
                     <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{r.date}</div>
                     <div style={{ fontSize: 11, color: C.muted }}>{vName(r.vehicle_id)}</div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: C.teal }}>Tu parte</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: C.teal, fontFamily: "'Syne', sans-serif" }}>{fmt(r.chofer)}</div>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 11, color: C.teal }}>Tu parte</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.teal, fontFamily: "'Syne', sans-serif" }}>{fmt(r.chofer)}</div>
+                    </div>
+                    <button onClick={async () => {
+                      if (!window.confirm("¿Borrar este registro?")) return;
+                      try {
+                        await db.delete("records", r.id);
+                        setRecords(prev => prev.filter(x => x.id !== r.id));
+                      } catch { showToast("Error al borrar"); }
+                    }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer", paddingTop: 2 }}>×</button>
                   </div>
                 </div>
                 <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
@@ -631,11 +640,30 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: C.accent }}>{fmt(v.gananciaReal)}</div>
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11, marginBottom: v.records.length > 0 ? 10 : 0 }}>
                   <div><div style={{ color: C.muted }}>Facturado</div><div>{fmt(v.facturado)}</div></div>
                   <div><div style={{ color: C.muted }}>Gastos</div><div style={{ color: C.red }}>{fmt(v.otrosGastos)}</div></div>
                   <div><div style={{ color: C.muted }}>Días</div><div>{v.dias}</div></div>
                 </div>
+                {v.records.length > 0 && (
+                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                    {v.records.map(r => (
+                      <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}44`, fontSize: 12 }}>
+                        <div>
+                          <div style={{ color: C.white }}>{dName(r.driver_id)} · {r.date}</div>
+                          <div style={{ color: C.muted, fontSize: 11 }}>Facturado: {fmt(r.facturado)} · Neto: {fmt(r.neto)}</div>
+                        </div>
+                        <button onClick={async () => {
+                          if (!window.confirm("¿Borrar este registro?")) return;
+                          try {
+                            await db.delete("records", r.id);
+                            setRecords(prev => prev.filter(x => x.id !== r.id));
+                          } catch { showToast("Error al borrar"); }
+                        }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer" }}>×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             {vStats.filter(v => v.dias > 0).length === 0 && <div style={{ textAlign: "center", padding: 30, color: C.muted }}>Sin registros en este período</div>}
