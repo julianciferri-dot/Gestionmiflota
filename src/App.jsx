@@ -25,7 +25,7 @@ const supa = async (path, method = "GET", body = null) => {
 };
 
 const db = {
-  get: (table, query = "") => supa(`${table}?${query}&order=created_at.asc`),
+  get: (table, query = "") => supa(`${table}?${query}`),
   insert: (table, data) => supa(table, "POST", data),
   update: (table, id, data) => supa(`${table}?id=eq.${id}`, "PATCH", data),
   delete: (table, id) => supa(`${table}?id=eq.${id}`, "DELETE"),
