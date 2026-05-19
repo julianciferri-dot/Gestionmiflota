@@ -448,11 +448,18 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
     const exps = filteredExp.filter(e => e.vehicle_id === v.id);
     const facturado = rs.reduce((a, r) => a + Number(r.facturado), 0);
     const combustible = rs.reduce((a, r) => a + Number(r.combustible), 0);
+    const neto = rs.reduce((a, r) => a + Number(r.neto), 0);
+    const totalChofer = rs.reduce((a, r) => a + Number(r.chofer), 0);
     const otrosGastos = exps.reduce((a, e) => a + Number(e.amount), 0);
-    const gananciaBase = rs.reduce((a, r) => a + Number(r.ganancia), 0);
+    // Owner's real gain:
+    // Own vehicles: 100% of the 60% ganancia bruta (neto - chofer)
+    // Third party: ownerPct% of the 60% ganancia bruta
+    const ownerPct = Number(v.owner_pct) || 100;
+    const gananciaBruta = neto - totalChofer; // 60% del neto
+    const gananciaBase = v.type === "own" ? gananciaBruta : (gananciaBruta * ownerPct / 100);
     const gananciaReal = gananciaBase - otrosGastos;
     const choferes = [...new Set(rs.map(r => r.driver_id))];
-    return { ...v, facturado, combustible, otrosGastos, gananciaBase, gananciaReal, dias: rs.length, choferes, records: rs };
+    return { ...v, facturado, combustible, neto, totalChofer, otrosGastos, gananciaBase, gananciaReal, dias: rs.length, choferes, records: rs };
   });
 
   const totalGanancia = vStats.reduce((a, v) => a + v.gananciaReal, 0);
@@ -647,21 +654,37 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                 </div>
                 {v.records.length > 0 && (
                   <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
-                    {v.records.map(r => (
-                      <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${C.border}44`, fontSize: 12 }}>
-                        <div>
-                          <div style={{ color: C.white }}>{dName(r.driver_id)} · {r.date}</div>
-                          <div style={{ color: C.muted, fontSize: 11 }}>Facturado: {fmt(r.facturado)} · Neto: {fmt(r.neto)}</div>
+                    {v.records.map(r => {
+                      const ownerPct = Number(v.owner_pct) || 100;
+                      const gananciaBruta = Number(r.ganancia); // already = neto * (1 - driver_pct/100)
+                      const myGain = v.type === "own" ? gananciaBruta : (gananciaBruta * ownerPct / 100);
+                      return (
+                        <div key={r.id} style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ color: C.text, fontWeight: 600, fontSize: 13 }}>{dName(r.driver_id)}</div>
+                              <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{r.date}</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, fontSize: 11 }}>
+                                <div><span style={{ color: C.muted }}>Fact: </span><span style={{ color: C.text }}>{fmt(r.facturado)}</span></div>
+                                <div><span style={{ color: C.muted }}>Comb: </span><span style={{ color: C.red }}>{fmt(r.combustible)}</span></div>
+                                <div><span style={{ color: C.muted }}>Neto: </span><span style={{ color: C.text }}>{fmt(r.neto)}</span></div>
+                              </div>
+                              <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 11 }}>
+                                <div><span style={{ color: C.muted }}>Chofer ({r.driver_pct}%): </span><span style={{ color: C.teal }}>{fmt(r.chofer)}</span></div>
+                                <div><span style={{ color: C.muted }}>Tuyo ({v.type === "own" ? (100 - Number(r.driver_pct)) + "% neto" : ownerPct + "% ganancia"}): </span><span style={{ color: C.accent, fontWeight: 700 }}>{fmt(myGain)}</span></div>
+                              </div>
+                            </div>
+                            <button onClick={async () => {
+                              if (!window.confirm("¿Borrar este registro?")) return;
+                              try {
+                                await db.delete("records", r.id);
+                                setRecords(prev => prev.filter(x => x.id !== r.id));
+                              } catch { showToast("Error al borrar"); }
+                            }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>×</button>
+                          </div>
                         </div>
-                        <button onClick={async () => {
-                          if (!window.confirm("¿Borrar este registro?")) return;
-                          try {
-                            await db.delete("records", r.id);
-                            setRecords(prev => prev.filter(x => x.id !== r.id));
-                          } catch { showToast("Error al borrar"); }
-                        }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer" }}>×</button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
