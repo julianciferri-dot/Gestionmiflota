@@ -418,10 +418,11 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
 // OWNER SCREEN
 // ═════════════════════════════════════════════════════════════════════════════
 function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload }) {
-  const TABS = ["Dashboard", "Vehículos", "Choferes", "Gastos", "Config"];
+  const TABS = ["Dashboard", "Vehículos", "Choferes", "Planilla", "Gastos", "Config"];
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState("dia");
   const [filterDay, setFilterDay] = useState(arDate());
+  const [planillaWeek, setPlanillaWeek] = useState(weekOf(arDate()));
   const [filterWeek, setFilterWeek] = useState(weekOf(arDate()));
   const [filterMonth, setFilterMonth] = useState(monthOf(arDate()));
   const [newDrv, setNewDrv] = useState({ name: "", pin: "", vehicle_id: "", pct: "40" });
@@ -798,6 +799,102 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
         {tab === 3 && (
           <div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>Semana</label>
+              <select value={planillaWeek} onChange={e => setPlanillaWeek(e.target.value)} style={inp}>
+                {weeks.length === 0 && <option value={weekOf(arDate())}>Semana actual</option>}
+                {weeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
+              </select>
+            </div>
+            {(() => {
+              // Generate days of the week
+              const mon = new Date(planillaWeek + "T00:00:00");
+              const days = Array.from({length: 7}, (_, i) => {
+                const d = new Date(mon);
+                d.setDate(mon.getDate() + i);
+                return d.toISOString().split("T")[0];
+              });
+              const dayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+              const weekRecords = records.filter(r => r.week === planillaWeek);
+
+              return (
+                <div style={{ overflowX: "auto" }}>
+                  {drivers.map(d => {
+                    const driverRecords = weekRecords.filter(r => r.driver_id === d.id);
+                    if (driverRecords.length === 0) return null;
+                    const totalFact = driverRecords.reduce((a, r) => a + Number(r.facturado), 0);
+                    const totalComb = driverRecords.reduce((a, r) => a + Number(r.combustible), 0);
+                    const totalNeto = driverRecords.reduce((a, r) => a + Number(r.neto), 0);
+                    const totalMio = driverRecords.reduce((a, r) => {
+                      const v = vehicles.find(vv => vv.id === r.vehicle_id);
+                      const ownerPct = v ? Number(v.owner_pct) : 100;
+                      const ganBruta = Number(r.ganancia);
+                      return a + (v && v.type === "third" ? ganBruta * ownerPct / 100 : ganBruta);
+                    }, 0);
+                    return (
+                      <div key={d.id} style={{ ...card, padding: 14, marginBottom: 16 }}>
+                        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white, marginBottom: 12 }}>{d.name}</div>
+                        <div style={{ overflowX: "auto" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: "left", color: C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10 }}></th>
+                                {days.map((day, i) => {
+                                  const isToday = day === arDate();
+                                  return <th key={day} style={{ textAlign: "center", color: isToday ? C.accent : C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10, minWidth: 52 }}>{dayLabels[i]}<br/><span style={{ fontSize: 9 }}>{day.slice(8)}</span></th>;
+                                })}
+                                <th style={{ textAlign: "center", color: C.accent, padding: "4px 6px", fontWeight: 700, fontSize: 10 }}>TOTAL</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {[
+                                { label: "Fact.", color: C.text, key: "facturado" },
+                                { label: "Comb.", color: C.red, key: "combustible" },
+                                { label: "Neto", color: C.muted, key: "neto" },
+                                { label: "Mío", color: C.accent, key: "mio" },
+                              ].map(row => (
+                                <tr key={row.key}>
+                                  <td style={{ color: row.color, padding: "3px 6px", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{row.label}</td>
+                                  {days.map(day => {
+                                    const r = driverRecords.find(x => x.date === day);
+                                    let val = 0;
+                                    if (r) {
+                                      if (row.key === "mio") {
+                                        const v = vehicles.find(vv => vv.id === r.vehicle_id);
+                                        const ownerPct = v ? Number(v.owner_pct) : 100;
+                                        val = v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia);
+                                      } else {
+                                        val = Number(r[row.key]);
+                                      }
+                                    }
+                                    return (
+                                      <td key={day} style={{ textAlign: "center", padding: "3px 4px", color: r ? row.color : C.border, fontSize: 10, background: r ? C.hi : "transparent", borderRadius: 4 }}>
+                                        {r ? ("$" + Math.round(val/1000) + "k") : "—"}
+                                      </td>
+                                    );
+                                  })}
+                                  <td style={{ textAlign: "center", padding: "3px 6px", color: row.color, fontWeight: 700, fontSize: 10 }}>
+                                    ${Math.round((row.key === "facturado" ? totalFact : row.key === "combustible" ? totalComb : row.key === "neto" ? totalNeto : totalMio)/1000)}k
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {drivers.filter(d => weekRecords.some(r => r.driver_id === d.id)).length === 0 && (
+                    <div style={{ textAlign: "center", padding: 40, color: C.muted }}>No hay registros esta semana</div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {tab === 4 && (
+          <div>
             <div style={card}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Registrar gasto</div>
               <label style={lbl}>Vehículo</label>
@@ -840,7 +937,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
           </div>
         )}
 
-        {tab === 4 && (
+        {tab === 5 && (
           <div>
             <div style={card}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Tu PIN de dueño</div>
