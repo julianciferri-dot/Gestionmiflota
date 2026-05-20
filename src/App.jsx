@@ -294,9 +294,9 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
                   </div>
                 </div>
                 <div style={{ borderTop: "1px solid " + C.border, paddingTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
-                  <div><div style={{ color: C.muted }}>Uber</div><div>{fmt(r.uber)}</div></div>
-                  <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red }}>{fmt(r.combustible)}</div></div>
-                  <div><div style={{ color: C.muted }}>Neto</div><div>{fmt(r.neto)}</div></div>
+                  <div><div style={{ color: C.muted }}>Uber</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(r.uber)}</div></div>
+                  <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(r.combustible)}</div></div>
+                  <div><div style={{ color: C.muted }}>Neto</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(r.neto)}</div></div>
                 </div>
               </div>
             ))}
@@ -441,11 +441,10 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
   const deleteExpense = async (id) => { await db.delete("expenses", id); setExpenses(prev => prev.filter(e => e.id !== id)); };
 
-  const toggleDayoff = async (driverId) => {
-    const todayStr = arDate();
-    const existing = dayoffs.find(o => o.driver_id === driverId && o.date === todayStr);
+  const toggleDayoff = async (driverId, dateStr) => {
+    const existing = dayoffs.find(o => o.driver_id === driverId && o.date === dateStr);
     if (existing) { await db.delete("dayoffs", existing.id); setDayoffs(prev => prev.filter(o => o.id !== existing.id)); }
-    else { const newD = { id: Date.now().toString(), driver_id: driverId, date: todayStr }; await db.insert("dayoffs", newD); setDayoffs(prev => [...prev, newD]); }
+    else { const newD = { id: Date.now().toString(), driver_id: driverId, date: dateStr }; await db.insert("dayoffs", newD); setDayoffs(prev => [...prev, newD]); }
   };
 
   const sendReminder = () => {
@@ -543,21 +542,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
             <button onClick={sendReminder} style={{ ...btn("#25d366", "#fff"), marginBottom: 16 }}>
               📲 Ver quién no cargó ayer → WhatsApp
             </button>
-            <div style={{ ...card, marginBottom: 16 }}>
-              <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Marcar franco para hoy</div>
-              {drivers.map(d => {
-                const hasDayoff = dayoffs.some(o => o.driver_id === d.id && o.date === arDate());
-                return (
-                  <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border }}>
-                    <div style={{ fontSize: 13, color: hasDayoff ? C.teal : C.text }}>{hasDayoff ? "🏖️ " : ""}{d.name}</div>
-                    <button onClick={() => toggleDayoff(d.id)} style={{ background: hasDayoff ? C.teal + "22" : C.hi, border: "1px solid " + (hasDayoff ? C.teal : C.border), borderRadius: 8, padding: "6px 14px", color: hasDayoff ? C.teal : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-                      {hasDayoff ? "Quitar" : "Franco"}
-                    </button>
-                  </div>
-                );
-              })}
-              {drivers.length === 0 && <div style={{ fontSize: 12, color: C.muted }}>No hay choferes cargados</div>}
-            </div>
+            <DayoffCard drivers={drivers} dayoffs={dayoffs} toggleDayoff={toggleDayoff} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
               {[
                 { label: "Facturado total", val: totalFacturado, color: C.text },
@@ -713,9 +698,9 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11, marginBottom: 12 }}>
-                      <div><div style={{ color: C.muted }}>Facturado</div><div>{fmt(d.facturado)}</div></div>
-                      <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red }}>{fmt(d.combustible)}</div></div>
-                      <div><div style={{ color: C.teal }}>Su parte</div><div style={{ color: C.teal }}>{fmt(d.chofer)}</div></div>
+                      <div><div style={{ color: C.muted }}>Facturado</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(d.facturado)}</div></div>
+                      <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(d.combustible)}</div></div>
+                      <div><div style={{ color: C.muted }}>Su parte</div><div style={{ color: C.teal, fontWeight: 600 }}>{fmt(d.chofer)}</div></div>
                     </div>
                     <WhatsAppBtn d={d} records={records} filtered={filtered} period={period} filterDay={filterDay} filterWeek={filterWeek} filterMonth={filterMonth} whatsappDriver={whatsappDriver} />
                   </div>
@@ -730,91 +715,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         )}
 
         {tab === 3 && (
-          <div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={lbl}>Semana</label>
-              <select value={planillaWeek} onChange={e => setPlanillaWeek(e.target.value)} style={inp}>
-                {weeks.length === 0 && <option value={weekOf(arDate())}>Semana actual</option>}
-                {weeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
-              </select>
-            </div>
-            {(() => {
-              const mon = new Date(planillaWeek + "T00:00:00");
-              const days = Array.from({length: 7}, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d.toISOString().split("T")[0]; });
-              const dayLabels = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
-              const weekRecords = records.filter(r => r.week === planillaWeek);
-              return (
-                <div style={{ overflowX: "auto" }}>
-                  {drivers.map(d => {
-                    const driverRecords = weekRecords.filter(r => r.driver_id === d.id);
-                    if (driverRecords.length === 0) return null;
-                    const totalFact = driverRecords.reduce((a, r) => a + Number(r.facturado), 0);
-                    const totalComb = driverRecords.reduce((a, r) => a + Number(r.combustible), 0);
-                    const totalNeto = driverRecords.reduce((a, r) => a + Number(r.neto), 0);
-                    const totalMio = driverRecords.reduce((a, r) => {
-                      const v = vehicles.find(vv => vv.id === r.vehicle_id);
-                      const ownerPct = v ? Number(v.owner_pct) : 100;
-                      return a + (v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia));
-                    }, 0);
-                    return (
-                      <div key={d.id} style={{ ...card, padding: 14, marginBottom: 16 }}>
-                        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white, marginBottom: 12 }}>{d.name}</div>
-                        <div style={{ overflowX: "auto" }}>
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                            <thead>
-                              <tr>
-                                <th style={{ textAlign: "left", color: C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10 }}></th>
-                                {days.map((day, i) => (
-                                  <th key={day} style={{ textAlign: "center", color: day === arDate() ? C.accent : C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10, minWidth: 52 }}>
-                                    {dayLabels[i]}<br/><span style={{ fontSize: 9 }}>{day.slice(8)}</span>
-                                  </th>
-                                ))}
-                                <th style={{ textAlign: "center", color: C.accent, padding: "4px 6px", fontWeight: 700, fontSize: 10 }}>TOTAL</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {[
-                                { label: "Fact.", color: C.text, key: "facturado" },
-                                { label: "Comb.", color: C.red, key: "combustible" },
-                                { label: "Neto", color: C.muted, key: "neto" },
-                                { label: "Mío", color: C.accent, key: "mio" },
-                              ].map(row => (
-                                <tr key={row.key}>
-                                  <td style={{ color: row.color, padding: "3px 6px", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{row.label}</td>
-                                  {days.map(day => {
-                                    const r = driverRecords.find(x => x.date === day);
-                                    let val = 0;
-                                    if (r) {
-                                      if (row.key === "mio") {
-                                        const v = vehicles.find(vv => vv.id === r.vehicle_id);
-                                        const ownerPct = v ? Number(v.owner_pct) : 100;
-                                        val = v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia);
-                                      } else { val = Number(r[row.key]); }
-                                    }
-                                    return (
-                                      <td key={day} style={{ textAlign: "center", padding: "3px 4px", color: r ? row.color : C.border, fontSize: 10, background: r ? C.hi : "transparent", borderRadius: 4 }}>
-                                        {r ? ("$" + Math.round(val/1000) + "k") : "—"}
-                                      </td>
-                                    );
-                                  })}
-                                  <td style={{ textAlign: "center", padding: "3px 6px", color: row.color, fontWeight: 700, fontSize: 10 }}>
-                                    {"$" + Math.round((row.key === "facturado" ? totalFact : row.key === "combustible" ? totalComb : row.key === "neto" ? totalNeto : totalMio)/1000) + "k"}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {drivers.filter(d => weekRecords.some(r => r.driver_id === d.id)).length === 0 && (
-                    <div style={{ textAlign: "center", padding: 40, color: C.muted }}>No hay registros esta semana</div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
+          <PlanillaTab records={records} vehicles={vehicles} drivers={drivers} weeks={weeks} />
         )}
 
         {tab === 4 && (
@@ -872,6 +773,166 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function DayoffCard({ drivers, dayoffs, toggleDayoff }) {
+  const [dayoffDate, setDayoffDate] = useState(arDate());
+  return (
+    <div style={{ background: "#0e1525", borderRadius: 16, padding: 18, border: "1px solid #1e2d50", marginBottom: 12 }}>
+      <div style={{ fontSize: 10, color: "#f59e0b", letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Marcar franco</div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: "block", fontSize: 10, letterSpacing: 2, color: "#64748b", textTransform: "uppercase", marginBottom: 6, fontWeight: 600 }}>Fecha</label>
+        <input type="date" value={dayoffDate} onChange={e => setDayoffDate(e.target.value)}
+          style={{ background: "#0e1525", border: "1px solid #1e2d50", borderRadius: 10, padding: "12px 14px", color: "#e2e8f0", fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" }} />
+      </div>
+      {drivers.map(d => {
+        const hasDayoff = dayoffs.some(o => o.driver_id === d.id && o.date === dayoffDate);
+        return (
+          <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #1e2d50" }}>
+            <div style={{ fontSize: 13, color: hasDayoff ? "#14b8a6" : "#e2e8f0" }}>{hasDayoff ? "🏖️ " : ""}{d.name}</div>
+            <button onClick={() => toggleDayoff(d.id, dayoffDate)}
+              style={{ background: hasDayoff ? "#14b8a622" : "#151f35", border: "1px solid " + (hasDayoff ? "#14b8a6" : "#1e2d50"), borderRadius: 8, padding: "6px 14px", color: hasDayoff ? "#14b8a6" : "#64748b", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+              {hasDayoff ? "Quitar" : "Franco"}
+            </button>
+          </div>
+        );
+      })}
+      {drivers.length === 0 && <div style={{ fontSize: 12, color: "#64748b" }}>No hay choferes cargados</div>}
+    </div>
+  );
+}
+
+function PlanillaTab({ records, vehicles, drivers, weeks }) {
+  const [planillaWeek, setPlanillaWeek] = useState(weekOf(arDate()));
+  const [vista, setVista] = useState("chofer"); // "chofer" | "auto"
+
+  const mon = new Date(planillaWeek + "T00:00:00");
+  const days = Array.from({length: 7}, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d.toISOString().split("T")[0]; });
+  const dayLabels = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
+  const weekRecords = records.filter(r => r.week === planillaWeek);
+
+  const rows = [
+    { label: "Fact.", color: C.text, key: "facturado" },
+    { label: "Comb.", color: C.red, key: "combustible" },
+    { label: "Neto", color: C.muted, key: "neto" },
+    { label: "Mío", color: C.accent, key: "mio" },
+  ];
+
+  const getMio = (r) => {
+    const v = vehicles.find(vv => vv.id === r.vehicle_id);
+    const ownerPct = v ? Number(v.owner_pct) : 100;
+    return v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia);
+  };
+
+  const getVal = (r, key) => key === "mio" ? getMio(r) : Number(r[key]);
+
+  const renderTable = (groupRecords, days) => {
+    const totals = { facturado: 0, combustible: 0, neto: 0, mio: 0 };
+    days.forEach(day => {
+      groupRecords.filter(r => r.date === day).forEach(r => {
+        totals.facturado += Number(r.facturado);
+        totals.combustible += Number(r.combustible);
+        totals.neto += Number(r.neto);
+        totals.mio += getMio(r);
+      });
+    });
+    return (
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left", color: C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10 }}></th>
+              {days.map((day, i) => (
+                <th key={day} style={{ textAlign: "center", color: day === arDate() ? C.accent : C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10, minWidth: 52 }}>
+                  {dayLabels[i]}<br/><span style={{ fontSize: 9 }}>{day.slice(8)}</span>
+                </th>
+              ))}
+              <th style={{ textAlign: "center", color: C.accent, padding: "4px 6px", fontWeight: 700, fontSize: 10 }}>TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.key}>
+                <td style={{ color: row.color, padding: "3px 6px", fontWeight: 600, fontSize: 10, whiteSpace: "nowrap" }}>{row.label}</td>
+                {days.map(day => {
+                  const dayRecs = groupRecords.filter(r => r.date === day);
+                  const val = dayRecs.reduce((a, r) => a + getVal(r, row.key), 0);
+                  const hasData = dayRecs.length > 0;
+                  return (
+                    <td key={day} style={{ textAlign: "center", padding: "3px 4px", color: hasData ? row.color : C.border, fontSize: 10, background: hasData ? C.hi : "transparent", borderRadius: 4 }}>
+                      {hasData ? ("$" + Math.round(val/1000) + "k") : "—"}
+                    </td>
+                  );
+                })}
+                <td style={{ textAlign: "center", padding: "3px 6px", color: row.color, fontWeight: 700, fontSize: 10 }}>
+                  {"$" + Math.round(totals[row.key]/1000) + "k"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={lbl}>Semana</label>
+        <select value={planillaWeek} onChange={e => setPlanillaWeek(e.target.value)} style={{ ...inp, marginBottom: 12 }}>
+          {weeks.length === 0 && <option value={weekOf(arDate())}>Semana actual</option>}
+          {weeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
+        </select>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setVista("chofer")} style={{ flex: 1, background: vista === "chofer" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px", color: vista === "chofer" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            👤 Por chofer
+          </button>
+          <button onClick={() => setVista("auto")} style={{ flex: 1, background: vista === "auto" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px", color: vista === "auto" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            🚗 Por auto
+          </button>
+        </div>
+      </div>
+
+      {vista === "chofer" && (
+        <div>
+          {drivers.map(d => {
+            const driverRecords = weekRecords.filter(r => r.driver_id === d.id);
+            if (driverRecords.length === 0) return null;
+            return (
+              <div key={d.id} style={{ ...card, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white, marginBottom: 12 }}>{d.name}</div>
+                {renderTable(driverRecords, days)}
+              </div>
+            );
+          })}
+          {drivers.filter(d => weekRecords.some(r => r.driver_id === d.id)).length === 0 && (
+            <div style={{ textAlign: "center", padding: 40, color: C.muted }}>No hay registros esta semana</div>
+          )}
+        </div>
+      )}
+
+      {vista === "auto" && (
+        <div>
+          {vehicles.map(v => {
+            const vRecords = weekRecords.filter(r => r.vehicle_id === v.id);
+            if (vRecords.length === 0) return null;
+            return (
+              <div key={v.id} style={{ ...card, padding: 14, marginBottom: 16 }}>
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO " + v.owner_pct + "%"}</div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white, marginBottom: 12 }}>{v.name}</div>
+                </div>
+                {renderTable(vRecords, days)}
+              </div>
+            );
+          })}
+          {vehicles.filter(v => weekRecords.some(r => r.vehicle_id === v.id)).length === 0 && (
+            <div style={{ textAlign: "center", padding: 40, color: C.muted }}>No hay registros esta semana</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
