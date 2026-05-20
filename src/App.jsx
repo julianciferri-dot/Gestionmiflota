@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-// ─── Supabase ─────────────────────────────────────────────────────────────────
 const SUPA_URL = "https://jlkvrjaojvncwzwzdurx.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impsa3ZyamFvanZuY3d6d3pkdXJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNjAxMjMsImV4cCI6MjA5NDYzNjEyM30.pBKoWOrcqcLog_nOiwYaZeQI_23X2bwe3FVghc71A2o";
 
@@ -13,9 +12,7 @@ const supa = async (path, method = "GET", body = null) => {
   if (method === "POST") headers["Prefer"] = "return=representation";
   if (method === "PATCH") headers["Prefer"] = "return=representation";
   const res = await fetch(SUPA_URL + "/rest/v1/" + path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : null,
+    method, headers, body: body ? JSON.stringify(body) : null,
   });
   if (res.status === 204) return null;
   const text = await res.text();
@@ -29,10 +26,8 @@ const db = {
   insert: (table, data) => supa(table, "POST", data),
   update: (table, id, data) => supa(`${table}?id=eq.${id}`, "PATCH", data),
   delete: (table, id) => supa(`${table}?id=eq.${id}`, "DELETE"),
-  upsert: (table, data) => supa(table, "POST", data),
 };
 
-// ─── Default vehicles ─────────────────────────────────────────────────────────
 const DEFAULT_VEHICLES = [
   { id: "v1", name: "Volkswagen Virtus AH401ZN", type: "own", owner_pct: 100 },
   { id: "v2", name: "Fiat Cronos AH668PJ", type: "own", owner_pct: 100 },
@@ -44,7 +39,6 @@ const DEFAULT_VEHICLES = [
   { id: "v8", name: "Volkswagen Gol Trend AC387NY", type: "third", owner_pct: 30 },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n || 0);
 
 const arDate = (offsetDays = 0) => {
@@ -71,43 +65,18 @@ const toBase64 = (file) => new Promise((res, rej) => {
 
 const OWNER_PIN = "1803";
 const getOwnerPin = () => OWNER_PIN;
-const setOwnerPin = (p) => {}; // PIN is fixed in code
 
-async function readImage(base64, mediaType, type) {
-  const prompt = type === "uber"
-    ? "Captura de Uber de un chofer argentino. Extraé el monto TOTAL ganado del día en pesos. Respondé SOLO con el número sin símbolos. Si no podés, respondé 0."
-    : "Ticket de combustible argentino. Extraé el monto TOTAL pagado en pesos. Respondé SOLO con el número sin símbolos. Si no podés, respondé 0.";
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 100,
-      messages: [{ role: "user", content: [
-        { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-        { type: "text", text: prompt }
-      ]}]
-    })
-  });
-  const data = await res.json();
-  return parseFloat((data.content?.[0]?.text || "0").replace(/[^\d.]/g, "")) || 0;
-}
-
-// ─── Colors ───────────────────────────────────────────────────────────────────
 const C = {
   bg: "#070b14", surface: "#0e1525", hi: "#151f35",
   border: "#1e2d50", accent: "#f59e0b", teal: "#14b8a6",
   red: "#f43f5e", text: "#e2e8f0", muted: "#64748b", white: "#fff",
 };
 
-const inp = { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", color: C.text, fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" };
+const inp = { background: C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "12px 14px", color: C.text, fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" };
 const lbl = { display: "block", fontSize: 10, letterSpacing: 2, color: C.muted, textTransform: "uppercase", marginBottom: 6, fontWeight: 600 };
-const card = { background: C.surface, borderRadius: 16, padding: 18, border: `1px solid ${C.border}`, marginBottom: 12 };
+const card = { background: C.surface, borderRadius: 16, padding: 18, border: "1px solid " + C.border, marginBottom: 12 };
 const btn = (bg, fg) => ({ width: "100%", background: bg || C.accent, border: "none", borderRadius: 12, padding: 14, color: fg || "#000", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" });
 
-// ═════════════════════════════════════════════════════════════════════════════
-// ROOT
-// ═════════════════════════════════════════════════════════════════════════════
 export default function App() {
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -134,25 +103,17 @@ export default function App() {
       ]);
       setDrivers(d || []);
       if (!v || v.length === 0) {
-        try {
-          await Promise.all(DEFAULT_VEHICLES.map(veh => db.insert("vehicles", veh)));
-        } catch {}
+        try { await Promise.all(DEFAULT_VEHICLES.map(veh => db.insert("vehicles", veh))); } catch {}
         setVehicles(DEFAULT_VEHICLES);
-      } else {
-        setVehicles(v);
-      }
+      } else { setVehicles(v); }
       setRecords(r || []);
       setExpenses(e || []);
       setDayoffs(o || []);
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
     setLoading(false);
   };
 
   useEffect(() => { loadAll(); }, []);
-
-  const saveOwnerPinFn = (p) => { setOwnerPinState(p); setOwnerPin(p); };
 
   const dName = (id) => drivers.find(d => d.id === id)?.name || id;
   const vName = (id) => vehicles.find(v => v.id === id)?.name || id;
@@ -171,15 +132,12 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
       {view === "login" && <LoginScreen drivers={drivers} ownerPin={ownerPin} onDriver={(d) => { setCurrentDriver(d); setView("driver"); }} onOwner={() => setView("owner")} />}
       {view === "driver" && <DriverScreen driver={currentDriver} vehicles={vehicles} records={records} dayoffs={dayoffs} setDayoffs={setDayoffs} setRecords={setRecords} showToast={showToast} onBack={() => setView("login")} vName={vName} />}
-      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} setDrivers={setDrivers} setVehicles={setVehicles} setRecords={setRecords} setExpenses={setExpenses} setDayoffs={setDayoffs} ownerPin={ownerPin} saveOwnerPin={saveOwnerPinFn} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} reload={loadAll} />}
+      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} setDrivers={setDrivers} setVehicles={setVehicles} setRecords={setRecords} setExpenses={setExpenses} setDayoffs={setDayoffs} ownerPin={ownerPin} saveOwnerPin={setOwnerPinState} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} reload={loadAll} />}
       {toast && <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", background: C.accent, color: "#000", padding: "12px 24px", borderRadius: 100, fontSize: 14, fontWeight: 700, zIndex: 999, whiteSpace: "nowrap" }}>{toast}</div>}
     </div>
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// LOGIN
-// ═════════════════════════════════════════════════════════════════════════════
 function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -206,13 +164,13 @@ function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
         <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>Ingresá tu PIN de 4 dígitos</div>
       </div>
       <div style={{ display: "flex", gap: 16, marginBottom: 32 }}>
-        {[0,1,2,3].map(i => <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${C.accent}`, background: i < pin.length ? C.accent : "transparent", transition: "all .15s" }} />)}
+        {[0,1,2,3].map(i => <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid " + C.accent, background: i < pin.length ? C.accent : "transparent", transition: "all .15s" }} />)}
       </div>
       {error && <div style={{ color: C.red, fontSize: 13, marginBottom: 16 }}>{error}</div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 72px)", gap: 12 }}>
         {["1","2","3","4","5","6","7","8","9","_","0","X"].map((d, i) => (
           <button key={i} onClick={() => d !== "_" && press(d)}
-            style={{ height: 72, background: d !== "_" ? C.surface : "transparent", border: d !== "_" ? `1px solid ${C.border}` : "none", borderRadius: 16, color: C.text, fontSize: d === "X" ? 18 : 24, cursor: d !== "_" ? "pointer" : "default", fontFamily: "'DM Mono', monospace" }}>
+            style={{ height: 72, background: d !== "_" ? C.surface : "transparent", border: d !== "_" ? "1px solid " + C.border : "none", borderRadius: 16, color: C.text, fontSize: d === "X" ? 18 : 24, cursor: d !== "_" ? "pointer" : "default", fontFamily: "'DM Mono', monospace" }}>
             {d === "X" ? "⌫" : d === "_" ? "" : d}
           </button>
         ))}
@@ -222,20 +180,14 @@ function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// DRIVER SCREEN
-// ═════════════════════════════════════════════════════════════════════════════
 function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecords, showToast, onBack, vName }) {
   const [screen, setScreen] = useState("form");
   const [vehicleId, setVehicleId] = useState("");
   const [uberAmt, setUberAmt] = useState("");
   const [fuelAmt, setFuelAmt] = useState("");
   const [particular, setParticular] = useState("");
-  const [uberImg, setUberImg] = useState(null);
-  const [fuelImg, setFuelImg] = useState(null);
   const [uberPreview, setUberPreview] = useState("");
   const [fuelPreview, setFuelPreview] = useState("");
-  const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(arDate());
 
   const myRecords = records.filter(r => r.driver_id === driver.id).sort((a, b) => b.date.localeCompare(a.date));
@@ -246,7 +198,6 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   const neto = total - fuel;
   const driverCut = neto * driverPct;
   const ownerCut = neto * (1 - driverPct);
-
   const todayStr = arDate();
   const hasDayoff = dayoffs.some(d => d.driver_id === driver.id && d.date === todayStr);
 
@@ -266,14 +217,8 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   const handleImg = async (file, type) => {
     if (!file) return;
     const url = URL.createObjectURL(file);
-    const b64 = await toBase64(file);
-    if (type === "uber") { setUberImg({ b64, mt: file.type }); setUberPreview(url); }
-    else { setFuelImg({ b64, mt: file.type }); setFuelPreview(url); }
-  };
-
-  const calculate = () => {
-    if (!uberAmt && parseFloat(uberAmt) === 0) { showToast("Ingresá el monto de Uber"); return; }
-    setScreen("confirm");
+    if (type === "uber") setUberPreview(url);
+    else setFuelPreview(url);
   };
 
   const submit = async () => {
@@ -290,36 +235,36 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       showToast("Enviado al dueño ✓");
       setScreen("form");
       setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular(""); setSelectedDate(arDate());
-      setUberImg(null); setFuelImg(null); setUberPreview(""); setFuelPreview("");
+      setUberPreview(""); setFuelPreview("");
     } catch { showToast("Error al guardar. Intentá de nuevo."); }
   };
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      <div style={{ background: C.surface, padding: "16px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: C.surface, padding: "16px 20px", borderBottom: "1px solid " + C.border, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase" }}>Chofer</div>
           <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: C.white }}>{driver.name}</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setScreen(screen === "history" ? "form" : "history")} style={{ background: C.hi, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 14px", color: C.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+          <button onClick={() => setScreen(screen === "history" ? "form" : "history")} style={{ background: C.hi, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 14px", color: C.text, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
             {screen === "history" ? "← Cargar" : "Historial"}
           </button>
-          <button onClick={onBack} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
+          <button onClick={onBack} style={{ background: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
         </div>
       </div>
       <div style={{ padding: 20 }}>
         {screen === "form" && (
           hasDayoff ? (
-            <div style={{ background: C.hi, border: `1px solid ${C.teal}44`, borderRadius: 12, padding: 14, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ background: C.hi, border: "1px solid " + C.teal + "44", borderRadius: 12, padding: 14, marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 13, color: C.teal, fontWeight: 700 }}>✅ Hoy marcado como franco</div>
                 <div style={{ fontSize: 11, color: C.muted }}>No aparecerás en el recordatorio</div>
               </div>
-              <button onClick={toggleDayoff} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Quitar</button>
+              <button onClick={toggleDayoff} style={{ background: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "6px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Quitar</button>
             </div>
           ) : (
-            <button onClick={toggleDayoff} style={{ ...btn(C.hi, C.teal), border: `1px solid ${C.teal}44`, marginBottom: 16, fontSize: 13 }}>
+            <button onClick={toggleDayoff} style={{ ...btn(C.hi, C.teal), border: "1px solid " + C.teal + "44", marginBottom: 16, fontSize: 13 }}>
               🏖️ Marcar hoy como franco
             </button>
           )
@@ -343,14 +288,12 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
                     </div>
                     <button onClick={async () => {
                       if (!window.confirm("¿Borrar este registro?")) return;
-                      try {
-                        await db.delete("records", r.id);
-                        setRecords(prev => prev.filter(x => x.id !== r.id));
-                      } catch { showToast("Error al borrar"); }
+                      try { await db.delete("records", r.id); setRecords(prev => prev.filter(x => x.id !== r.id)); }
+                      catch { showToast("Error al borrar"); }
                     }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer", paddingTop: 2 }}>×</button>
                   </div>
                 </div>
-                <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
+                <div style={{ borderTop: "1px solid " + C.border, paddingTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
                   <div><div style={{ color: C.muted }}>Uber</div><div>{fmt(r.uber)}</div></div>
                   <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red }}>{fmt(r.combustible)}</div></div>
                   <div><div style={{ color: C.muted }}>Neto</div><div>{fmt(r.neto)}</div></div>
@@ -390,12 +333,12 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
               setFuelAmt(raw ? Number(raw).toLocaleString("es-AR") : "");
             }} placeholder="0" style={{ ...inp, marginBottom: 20 }} />
             {total > 0 && (
-              <div style={{ background: C.bg, borderRadius: 10, padding: 12, marginBottom: 16, border: `1px solid ${C.border}` }}>
+              <div style={{ background: C.bg, borderRadius: 10, padding: 12, marginBottom: 16, border: "1px solid " + C.border }}>
                 <Row label="Neto" val={fmt(neto)} />
                 <Row label={"Tu parte (" + (driver.pct ?? 40) + "%)"} val={fmt(driverCut)} color={C.teal} bold />
               </div>
             )}
-            <button onClick={calculate} style={btn()}>Calcular mis ganancias →</button>
+            <button onClick={() => setScreen("confirm")} style={btn()}>Calcular mis ganancias →</button>
           </div>
         )}
 
@@ -403,18 +346,18 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
           <div>
             <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Confirmá los datos</div>
             <div style={card}>
-              <Row label="Uber" val={fmt(parseFloat(uberAmt) || 0)} />
-              <Row label="Particulares" val={fmt(parseFloat(particular) || 0)} />
+              <Row label="Uber" val={fmt(parseAmt(uberAmt))} />
+              <Row label="Particulares" val={fmt(parseAmt(particular))} />
               <Row label="Total facturado" val={fmt(total)} bold />
-              <div style={{ borderTop: `1px solid ${C.border}`, margin: "10px 0" }} />
+              <div style={{ borderTop: "1px solid " + C.border, margin: "10px 0" }} />
               <Row label="Combustible" val={fmt(fuel)} color={C.red} />
               <Row label="Neto" val={fmt(neto)} bold />
-              <div style={{ borderTop: `1px solid ${C.border}`, margin: "10px 0" }} />
+              <div style={{ borderTop: "1px solid " + C.border, margin: "10px 0" }} />
               <Row label={"Al dueño (" + Math.round((1 - driverPct) * 100) + "%)"} val={fmt(ownerCut)} color={C.muted} />
               <Row label={"Tu parte (" + (driver.pct ?? 40) + "%)"} val={fmt(driverCut)} color={C.teal} bold />
             </div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setScreen("form")} style={{ ...btn(C.hi, C.text), flex: 1, border: `1px solid ${C.border}` }}>← Editar</button>
+              <button onClick={() => setScreen("form")} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border }}>← Editar</button>
               <button onClick={submit} style={{ ...btn(), flex: 2 }}>Enviar al dueño ✓</button>
             </div>
           </div>
@@ -424,9 +367,6 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   );
 }
 
-// ═════════════════════════════════════════════════════════════════════════════
-// OWNER SCREEN
-// ═════════════════════════════════════════════════════════════════════════════
 function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload }) {
   const TABS = ["Dashboard", "Vehículos", "Choferes", "Planilla", "Gastos", "Config"];
   const [tab, setTab] = useState(0);
@@ -462,11 +402,8 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
     const neto = rs.reduce((a, r) => a + Number(r.neto), 0);
     const totalChofer = rs.reduce((a, r) => a + Number(r.chofer), 0);
     const otrosGastos = exps.reduce((a, e) => a + Number(e.amount), 0);
-    // Owner's real gain:
-    // Own vehicles: 100% of the 60% ganancia bruta (neto - chofer)
-    // Third party: ownerPct% of the 60% ganancia bruta
     const ownerPct = Number(v.owner_pct) || 100;
-    const gananciaBruta = neto - totalChofer; // 60% del neto
+    const gananciaBruta = neto - totalChofer;
     const gananciaBase = v.type === "own" ? gananciaBruta : (gananciaBruta * ownerPct / 100);
     const gananciaReal = gananciaBase - otrosGastos;
     const choferes = [...new Set(rs.map(r => r.driver_id))];
@@ -480,16 +417,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   const dStats = drivers.map(d => {
     const rs = filtered.filter(r => r.driver_id === d.id);
     const fac = rs.reduce((a, r) => a + Number(r.facturado), 0);
-    return {
-      ...d,
-      facturado: fac,
-      combustible: rs.reduce((a, r) => a + Number(r.combustible), 0),
-      neto: rs.reduce((a, r) => a + Number(r.neto), 0),
-      chofer: rs.reduce((a, r) => a + Number(r.chofer), 0),
-      debe: rs.reduce((a, r) => a + Number(r.ganancia), 0),
-      dias: rs.length,
-      promDiario: rs.length > 0 ? fac / rs.length : 0,
-    };
+    return { ...d, facturado: fac, combustible: rs.reduce((a, r) => a + Number(r.combustible), 0), neto: rs.reduce((a, r) => a + Number(r.neto), 0), chofer: rs.reduce((a, r) => a + Number(r.chofer), 0), debe: rs.reduce((a, r) => a + Number(r.ganancia), 0), dias: rs.length, promDiario: rs.length > 0 ? fac / rs.length : 0 };
   }).filter(d => d.facturado > 0).sort((a, b) => b.facturado - a.facturado);
 
   const addDriver = async () => {
@@ -497,51 +425,27 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
     if (drivers.some(d => d.pin === newDrv.pin)) { showToast("Ese PIN ya existe"); return; }
     const pct = Math.min(100, Math.max(0, parseFloat(newDrv.pct) || 40));
     const d = { id: Date.now().toString(), ...newDrv, pct };
-    try {
-      await db.insert("drivers", d);
-      setDrivers(prev => [...prev, d]);
-      setNewDrv({ name: "", pin: "", vehicle_id: "", pct: "40" });
-      showToast("Chofer agregado ✓");
-    } catch { showToast("Error al agregar chofer"); }
+    try { await db.insert("drivers", d); setDrivers(prev => [...prev, d]); setNewDrv({ name: "", pin: "", vehicle_id: "", pct: "40" }); showToast("Chofer agregado ✓"); }
+    catch { showToast("Error al agregar chofer"); }
   };
 
-  const deleteDriver = async (id) => {
-    await db.delete("drivers", id);
-    setDrivers(prev => prev.filter(d => d.id !== id));
-  };
-
-  const updateDriver = async (id, changes) => {
-    await db.update("drivers", id, changes);
-    setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...changes } : d));
-  };
+  const deleteDriver = async (id) => { await db.delete("drivers", id); setDrivers(prev => prev.filter(d => d.id !== id)); };
+  const updateDriver = async (id, changes) => { await db.update("drivers", id, changes); setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...changes } : d)); };
 
   const addExpense = async () => {
     if (!newExpense.vehicle_id || !newExpense.amount) { showToast("Completá todos los campos"); return; }
     const e = { id: Date.now().toString(), ...newExpense, amount: parseFloat(newExpense.amount) || 0 };
-    try {
-      await db.insert("expenses", e);
-      setExpenses(prev => [...prev, e]);
-      setNewExpense({ vehicle_id: "", category: "mecanico", description: "", amount: "", date: arDate() });
-      showToast("Gasto registrado ✓");
-    } catch { showToast("Error al guardar gasto"); }
+    try { await db.insert("expenses", e); setExpenses(prev => [...prev, e]); setNewExpense({ vehicle_id: "", category: "mecanico", description: "", amount: "", date: arDate() }); showToast("Gasto registrado ✓"); }
+    catch { showToast("Error al guardar gasto"); }
   };
 
-  const deleteExpense = async (id) => {
-    await db.delete("expenses", id);
-    setExpenses(prev => prev.filter(e => e.id !== id));
-  };
+  const deleteExpense = async (id) => { await db.delete("expenses", id); setExpenses(prev => prev.filter(e => e.id !== id)); };
 
   const toggleDayoff = async (driverId) => {
     const todayStr = arDate();
     const existing = dayoffs.find(o => o.driver_id === driverId && o.date === todayStr);
-    if (existing) {
-      await db.delete("dayoffs", existing.id);
-      setDayoffs(prev => prev.filter(o => o.id !== existing.id));
-    } else {
-      const newD = { id: Date.now().toString(), driver_id: driverId, date: todayStr };
-      await db.insert("dayoffs", newD);
-      setDayoffs(prev => [...prev, newD]);
-    }
+    if (existing) { await db.delete("dayoffs", existing.id); setDayoffs(prev => prev.filter(o => o.id !== existing.id)); }
+    else { const newD = { id: Date.now().toString(), driver_id: driverId, date: todayStr }; await db.insert("dayoffs", newD); setDayoffs(prev => [...prev, newD]); }
   };
 
   const sendReminder = () => {
@@ -560,31 +464,29 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   };
 
   const whatsappDriver = (d, dayFilter) => {
-    // Get records for this driver filtered by current period or specific day
     const dRecords = dayFilter
       ? records.filter(r => r.driver_id === d.id && r.date === dayFilter)
       : filtered.filter(r => r.driver_id === d.id);
-    
     if (dRecords.length === 0) { alert("No hay registros para este período"); return; }
-    
     const fact = dRecords.reduce((a, r) => a + Number(r.facturado), 0);
     const comb = dRecords.reduce((a, r) => a + Number(r.combustible), 0);
     const neto = dRecords.reduce((a, r) => a + Number(r.neto), 0);
     const choferPart = dRecords.reduce((a, r) => a + Number(r.chofer), 0);
     const debe = dRecords.reduce((a, r) => a + Number(r.ganancia), 0);
     const periodoLabel = dayFilter ? dayFilter : (period === "dia" ? filterDay : period === "semana" ? "Semana del " + filterWeek : filterMonth);
-    
-    const msg = "Hola " + d.name + "! 🚕
-
-📅 *" + periodoLabel + "*
-
-• Facturado: " + fmt(fact) + "
-• Combustible: " + fmt(comb) + "
-• Neto: " + fmt(neto) + "
-• Tu parte (" + (d.pct ?? 40) + "%): " + fmt(choferPart) + "
-• *Me tenés que pasar: " + fmt(debe) + "*
-
-Gracias! 👍";
+    const msg = [
+      "Hola " + d.name + "! 🚕",
+      "",
+      "📅 *" + periodoLabel + "*",
+      "",
+      "• Facturado: " + fmt(fact),
+      "• Combustible: " + fmt(comb),
+      "• Neto: " + fmt(neto),
+      "• Tu parte (" + (d.pct ?? 40) + "%): " + fmt(choferPart),
+      "• *Me tenés que pasar: " + fmt(debe) + "*",
+      "",
+      "Gracias! 👍",
+    ].join("\n");
     window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
   };
 
@@ -592,15 +494,15 @@ Gracias! 👍";
 
   return (
     <div style={{ minHeight: "100vh" }}>
-      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "16px 20px 0" }}>
+      <div style={{ background: C.surface, borderBottom: "1px solid " + C.border, padding: "16px 20px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>Panel del dueño</div>
             <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: C.white }}>Mi Flota</div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={reload} style={{ background: C.hi, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.teal, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>↻</button>
-            <button onClick={onBack} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
+            <button onClick={reload} style={{ background: C.hi, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.teal, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>↻</button>
+            <button onClick={onBack} style={{ background: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
           </div>
         </div>
         <div style={{ display: "flex", overflowX: "auto" }}>
@@ -614,13 +516,13 @@ Gracias! 👍";
         {tab < 3 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-              <button onClick={() => setPeriod("dia")} style={{ flex: 1, background: period === "dia" ? C.accent : C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px", color: period === "dia" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Día</button>
-              <button onClick={() => setPeriod("semana")} style={{ flex: 1, background: period === "semana" ? C.accent : C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px", color: period === "semana" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Semana</button>
-              <button onClick={() => setPeriod("mes")} style={{ flex: 1, background: period === "mes" ? C.accent : C.surface, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px", color: period === "mes" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Mes</button>
+              {["dia","semana","mes"].map((p, i) => (
+                <button key={p} onClick={() => setPeriod(p)} style={{ flex: 1, background: period === p ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px", color: period === p ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  {["Día","Semana","Mes"][i]}
+                </button>
+              ))}
             </div>
-            {period === "dia" && (
-              <input type="date" value={filterDay} onChange={e => setFilterDay(e.target.value)} style={inp} />
-            )}
+            {period === "dia" && <input type="date" value={filterDay} onChange={e => setFilterDay(e.target.value)} style={inp} />}
             {period === "semana" && (
               <select value={filterWeek} onChange={e => setFilterWeek(e.target.value)} style={inp}>
                 {weeks.length === 0 && <option value={weekOf(arDate())}>Semana actual</option>}
@@ -646,9 +548,9 @@ Gracias! 👍";
               {drivers.map(d => {
                 const hasDayoff = dayoffs.some(o => o.driver_id === d.id && o.date === arDate());
                 return (
-                  <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid " + C.border }}>
                     <div style={{ fontSize: 13, color: hasDayoff ? C.teal : C.text }}>{hasDayoff ? "🏖️ " : ""}{d.name}</div>
-                    <button onClick={() => toggleDayoff(d.id)} style={{ background: hasDayoff ? C.teal + "22" : C.hi, border: `1px solid ${hasDayoff ? C.teal : C.border}`, borderRadius: 8, padding: "6px 14px", color: hasDayoff ? C.teal : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                    <button onClick={() => toggleDayoff(d.id)} style={{ background: hasDayoff ? C.teal + "22" : C.hi, border: "1px solid " + (hasDayoff ? C.teal : C.border), borderRadius: 8, padding: "6px 14px", color: hasDayoff ? C.teal : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
                       {hasDayoff ? "Quitar" : "Franco"}
                     </button>
                   </div>
@@ -663,7 +565,7 @@ Gracias! 👍";
                 { label: "Mi ganancia", val: totalGanancia, color: C.accent },
                 { label: "Vehículos activos", val: vStats.filter(v => v.dias > 0).length, color: C.teal, isNum: true },
               ].map(c => (
-                <div key={c.label} style={{ background: C.surface, borderRadius: 14, padding: 16, border: `1px solid ${C.border}` }}>
+                <div key={c.label} style={{ background: C.surface, borderRadius: 14, padding: 16, border: "1px solid " + C.border }}>
                   <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>{c.label}</div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: c.color, fontFamily: "'Syne', sans-serif" }}>{c.isNum ? c.val : fmt(c.val)}</div>
                 </div>
@@ -688,10 +590,10 @@ Gracias! 👍";
                   <div><div style={{ color: C.muted }}>Días</div><div>{v.dias}</div></div>
                 </div>
                 {v.records.length > 0 && (
-                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                  <div style={{ borderTop: "1px solid " + C.border, paddingTop: 8 }}>
                     {v.records.map(r => {
                       const ownerPct = Number(v.owner_pct) || 100;
-                      const gananciaBruta = Number(r.ganancia); // already = neto * (1 - driver_pct/100)
+                      const gananciaBruta = Number(r.ganancia);
                       const myGain = v.type === "own" ? gananciaBruta : (gananciaBruta * ownerPct / 100);
                       return (
                         <div key={r.id} style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8 }}>
@@ -700,21 +602,19 @@ Gracias! 👍";
                               <div style={{ color: C.text, fontWeight: 600, fontSize: 13 }}>{dName(r.driver_id)}</div>
                               <div style={{ color: C.muted, fontSize: 11, marginBottom: 4 }}>{r.date}</div>
                               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, fontSize: 11 }}>
-                                <div><span style={{ color: C.muted }}>Fact: </span><span style={{ color: C.text }}>{fmt(r.facturado)}</span></div>
+                                <div><span style={{ color: C.muted }}>Fact: </span><span>{fmt(r.facturado)}</span></div>
                                 <div><span style={{ color: C.muted }}>Comb: </span><span style={{ color: C.red }}>{fmt(r.combustible)}</span></div>
-                                <div><span style={{ color: C.muted }}>Neto: </span><span style={{ color: C.text }}>{fmt(r.neto)}</span></div>
+                                <div><span style={{ color: C.muted }}>Neto: </span><span>{fmt(r.neto)}</span></div>
                               </div>
                               <div style={{ display: "flex", gap: 12, marginTop: 4, fontSize: 11 }}>
-                                <div><span style={{ color: C.muted }}>Chofer ({r.driver_pct}%): </span><span style={{ color: C.teal }}>{fmt(r.chofer)}</span></div>
-                                <div><span style={{ color: C.muted }}>Tuyo ({v.type === "own" ? (100 - Number(r.driver_pct)) + "% neto" : ownerPct + "% ganancia"}): </span><span style={{ color: C.accent, fontWeight: 700 }}>{fmt(myGain)}</span></div>
+                                <span style={{ color: C.muted }}>{"Chofer (" + r.driver_pct + "%): "}</span><span style={{ color: C.teal }}>{fmt(r.chofer)}</span>
+                                <span style={{ color: C.muted }}>{"Tuyo: "}</span><span style={{ color: C.accent, fontWeight: 700 }}>{fmt(myGain)}</span>
                               </div>
                             </div>
                             <button onClick={async () => {
                               if (!window.confirm("¿Borrar este registro?")) return;
-                              try {
-                                await db.delete("records", r.id);
-                                setRecords(prev => prev.filter(x => x.id !== r.id));
-                              } catch { showToast("Error al borrar"); }
+                              try { await db.delete("records", r.id); setRecords(prev => prev.filter(x => x.id !== r.id)); }
+                              catch { showToast("Error al borrar"); }
                             }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>×</button>
                           </div>
                         </div>
@@ -756,14 +656,14 @@ Gracias! 👍";
                   ))}
                 </div>
                 {v.choferes.length > 0 && (
-                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                  <div style={{ borderTop: "1px solid " + C.border, paddingTop: 10 }}>
                     <div style={{ fontSize: 10, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>Choferes</div>
                     {v.choferes.map(dId => {
                       const drs = v.records.filter(r => r.driver_id === dId);
                       const dn = drs.reduce((a, r) => a + Number(r.neto), 0);
                       const dc = drs.reduce((a, r) => a + Number(r.chofer), 0);
                       return (
-                        <div key={dId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                        <div key={dId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid " + C.border, fontSize: 12 }}>
                           <div>
                             <div style={{ color: C.white }}>{dName(dId)}</div>
                             <div style={{ color: C.muted, fontSize: 11 }}>{drs.length} días · Neto {fmt(dn)}</div>
@@ -796,7 +696,6 @@ Gracias! 👍";
               <div style={{ fontSize: 11, color: C.muted, marginBottom: 14 }}>El dueño recibe el {100 - (parseFloat(newDrv.pct) || 0)}%</div>
               <button onClick={addDriver} style={btn()}>+ Agregar chofer</button>
             </div>
-
             {dStats.length > 0 && (
               <div>
                 <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Estadísticas del período</div>
@@ -823,7 +722,6 @@ Gracias! 👍";
                 ))}
               </div>
             )}
-
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", margin: "20px 0 12px" }}>Editar choferes</div>
             {drivers.map(d => (
               <DriverCard key={d.id} d={d} drivers={drivers} onUpdate={(changes) => updateDriver(d.id, changes)} onDelete={() => deleteDriver(d.id)} showToast={showToast} />
@@ -841,16 +739,10 @@ Gracias! 👍";
               </select>
             </div>
             {(() => {
-              // Generate days of the week
               const mon = new Date(planillaWeek + "T00:00:00");
-              const days = Array.from({length: 7}, (_, i) => {
-                const d = new Date(mon);
-                d.setDate(mon.getDate() + i);
-                return d.toISOString().split("T")[0];
-              });
-              const dayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+              const days = Array.from({length: 7}, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return d.toISOString().split("T")[0]; });
+              const dayLabels = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"];
               const weekRecords = records.filter(r => r.week === planillaWeek);
-
               return (
                 <div style={{ overflowX: "auto" }}>
                   {drivers.map(d => {
@@ -862,8 +754,7 @@ Gracias! 👍";
                     const totalMio = driverRecords.reduce((a, r) => {
                       const v = vehicles.find(vv => vv.id === r.vehicle_id);
                       const ownerPct = v ? Number(v.owner_pct) : 100;
-                      const ganBruta = Number(r.ganancia);
-                      return a + (v && v.type === "third" ? ganBruta * ownerPct / 100 : ganBruta);
+                      return a + (v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia));
                     }, 0);
                     return (
                       <div key={d.id} style={{ ...card, padding: 14, marginBottom: 16 }}>
@@ -873,10 +764,11 @@ Gracias! 👍";
                             <thead>
                               <tr>
                                 <th style={{ textAlign: "left", color: C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10 }}></th>
-                                {days.map((day, i) => {
-                                  const isToday = day === arDate();
-                                  return <th key={day} style={{ textAlign: "center", color: isToday ? C.accent : C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10, minWidth: 52 }}>{dayLabels[i]}<br/><span style={{ fontSize: 9 }}>{day.slice(8)}</span></th>;
-                                })}
+                                {days.map((day, i) => (
+                                  <th key={day} style={{ textAlign: "center", color: day === arDate() ? C.accent : C.muted, padding: "4px 6px", fontWeight: 600, fontSize: 10, minWidth: 52 }}>
+                                    {dayLabels[i]}<br/><span style={{ fontSize: 9 }}>{day.slice(8)}</span>
+                                  </th>
+                                ))}
                                 <th style={{ textAlign: "center", color: C.accent, padding: "4px 6px", fontWeight: 700, fontSize: 10 }}>TOTAL</th>
                               </tr>
                             </thead>
@@ -897,9 +789,7 @@ Gracias! 👍";
                                         const v = vehicles.find(vv => vv.id === r.vehicle_id);
                                         const ownerPct = v ? Number(v.owner_pct) : 100;
                                         val = v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia);
-                                      } else {
-                                        val = Number(r[row.key]);
-                                      }
+                                      } else { val = Number(r[row.key]); }
                                     }
                                     return (
                                       <td key={day} style={{ textAlign: "center", padding: "3px 4px", color: r ? row.color : C.border, fontSize: 10, background: r ? C.hi : "transparent", borderRadius: 4 }}>
@@ -908,7 +798,7 @@ Gracias! 👍";
                                     );
                                   })}
                                   <td style={{ textAlign: "center", padding: "3px 6px", color: row.color, fontWeight: 700, fontSize: 10 }}>
-                                    ${Math.round((row.key === "facturado" ? totalFact : row.key === "combustible" ? totalComb : row.key === "neto" ? totalNeto : totalMio)/1000)}k
+                                    {"$" + Math.round((row.key === "facturado" ? totalFact : row.key === "combustible" ? totalComb : row.key === "neto" ? totalNeto : totalMio)/1000) + "k"}
                                   </td>
                                 </tr>
                               ))}
@@ -986,26 +876,18 @@ Gracias! 👍";
   );
 }
 
-// ─── WhatsApp Button with day selector ───────────────────────────────────────
 function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filterMonth, whatsappDriver }) {
-  const [mode, setMode] = useState("period"); // "period" or "day"
+  const [mode, setMode] = useState("period");
   const [selectedDay, setSelectedDay] = useState(arDate());
-  
-  // Get unique days this driver has records
   const driverDays = [...new Set(records.filter(r => r.driver_id === d.id).map(r => r.date))].sort().reverse();
-  
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <button onClick={() => setMode("period")} style={{ flex: 1, background: mode === "period" ? "#25d366" : C.hi, border: "none", borderRadius: 8, padding: "8px", color: mode === "period" ? "#fff" : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-          Período actual
-        </button>
-        <button onClick={() => setMode("day")} style={{ flex: 1, background: mode === "day" ? "#25d366" : C.hi, border: "none", borderRadius: 8, padding: "8px", color: mode === "day" ? "#fff" : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
-          Día específico
-        </button>
+        <button onClick={() => setMode("period")} style={{ flex: 1, background: mode === "period" ? "#25d366" : C.hi, border: "none", borderRadius: 8, padding: "8px", color: mode === "period" ? "#fff" : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Período actual</button>
+        <button onClick={() => setMode("day")} style={{ flex: 1, background: mode === "day" ? "#25d366" : C.hi, border: "none", borderRadius: 8, padding: "8px", color: mode === "day" ? "#fff" : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Día específico</button>
       </div>
       {mode === "day" && (
-        <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} style={{ ...{ background: C.surface, border: "1px solid #1e2d50", borderRadius: 10, padding: "10px 14px", color: "#e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" }, marginBottom: 8 }}>
+        <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} style={{ ...inp, marginBottom: 8 }}>
           {driverDays.map(day => <option key={day} value={day}>{day}</option>)}
         </select>
       )}
@@ -1016,18 +898,15 @@ function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filt
   );
 }
 
-// ─── Driver Card ──────────────────────────────────────────────────────────────
 function DriverCard({ d, drivers, onUpdate, onDelete, showToast }) {
   const [pctVal, setPctVal] = useState(String(d.pct ?? 40));
   const [pinVal, setPinVal] = useState(d.pin);
-
   const savePct = async () => { const val = Math.min(100, Math.max(0, parseFloat(pctVal) || 40)); await onUpdate({ pct: val }); showToast("Porcentaje actualizado ✓"); };
   const savePin = async () => {
     if (pinVal.length !== 4) { showToast("El PIN debe tener 4 dígitos"); return; }
     if (drivers.some(dr => dr.id !== d.id && dr.pin === pinVal)) { showToast("Ese PIN ya lo usa otro chofer"); return; }
     await onUpdate({ pin: pinVal }); showToast("PIN actualizado ✓");
   };
-
   return (
     <div style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
@@ -1054,7 +933,6 @@ function DriverCard({ d, drivers, onUpdate, onDelete, showToast }) {
   );
 }
 
-// ─── Shared ───────────────────────────────────────────────────────────────────
 function Row({ label, val, bold, color }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
@@ -1068,7 +946,7 @@ function ImgUpload({ preview, label, onChange }) {
   const ref = useRef();
   return (
     <div style={{ marginBottom: 12 }}>
-      <div onClick={() => ref.current.click()} style={{ border: `2px dashed ${C.border}`, borderRadius: 12, padding: preview ? 4 : 20, textAlign: "center", cursor: "pointer", background: C.hi, overflow: "hidden" }}>
+      <div onClick={() => ref.current.click()} style={{ border: "2px dashed " + C.border, borderRadius: 12, padding: preview ? 4 : 20, textAlign: "center", cursor: "pointer", background: C.hi, overflow: "hidden" }}>
         {preview ? <img src={preview} alt="" style={{ width: "100%", borderRadius: 8, maxHeight: 160, objectFit: "cover" }} /> : <div style={{ color: C.muted, fontSize: 13 }}>📸 {label}</div>}
       </div>
       <input ref={ref} type="file" accept="image/*" style={{ display: "none" }} onChange={e => e.target.files[0] && onChange(e.target.files[0])} />
