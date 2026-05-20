@@ -240,8 +240,9 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
 
   const myRecords = records.filter(r => r.driver_id === driver.id).sort((a, b) => b.date.localeCompare(a.date));
   const driverPct = (driver.pct ?? 40) / 100;
-  const total = (parseFloat(uberAmt) || 0) + (parseFloat(particular) || 0);
-  const fuel = parseFloat(fuelAmt) || 0;
+  const parseAmt = (v) => parseFloat((v || "0").toString().replace(/\./g, "").replace(",", ".")) || 0;
+  const total = parseAmt(uberAmt) + parseAmt(particular);
+  const fuel = parseAmt(fuelAmt);
   const neto = total - fuel;
   const driverCut = neto * driverPct;
   const ownerCut = neto * (1 - driverPct);
@@ -279,7 +280,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
     const rec = {
       id: Date.now().toString(), date: selectedDate, week: weekOf(selectedDate), month: monthOf(selectedDate),
       driver_id: driver.id, vehicle_id: vehicleId,
-      uber: parseFloat(uberAmt) || 0, particular: parseFloat(particular) || 0,
+      uber: parseAmt(uberAmt), particular: parseAmt(particular),
       facturado: total, combustible: fuel, neto, ganancia: ownerCut, chofer: driverCut,
       driver_pct: driver.pct ?? 40,
     };
@@ -372,13 +373,22 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
             <label style={lbl}>📱 Captura de Uber</label>
             <ImgUpload preview={uberPreview} label="Subir captura de Uber" onChange={f => handleImg(f, "uber")} />
             <label style={lbl}>Monto Uber $</label>
-            <input type="number" value={uberAmt} onChange={e => setUberAmt(e.target.value)} placeholder="0" style={{ ...inp, marginBottom: 16 }} />
+            <input type="text" inputMode="numeric" value={uberAmt} onChange={e => {
+              const raw = e.target.value.replace(/\D/g, "");
+              setUberAmt(raw ? Number(raw).toLocaleString("es-AR") : "");
+            }} placeholder="0" style={{ ...inp, marginBottom: 16 }} />
             <label style={lbl}>🚗 Viajes particulares $ (opcional)</label>
-            <input type="number" value={particular} onChange={e => setParticular(e.target.value)} placeholder="0" style={{ ...inp, marginBottom: 16 }} />
+            <input type="text" inputMode="numeric" value={particular} onChange={e => {
+              const raw = e.target.value.replace(/\D/g, "");
+              setParticular(raw ? Number(raw).toLocaleString("es-AR") : "");
+            }} placeholder="0" style={{ ...inp, marginBottom: 16 }} />
             <label style={lbl}>⛽ Ticket de combustible</label>
             <ImgUpload preview={fuelPreview} label="Subir foto del ticket" onChange={f => handleImg(f, "fuel")} />
             <label style={lbl}>Monto combustible $</label>
-            <input type="number" value={fuelAmt} onChange={e => setFuelAmt(e.target.value)} placeholder="0" style={{ ...inp, marginBottom: 20 }} />
+            <input type="text" inputMode="numeric" value={fuelAmt} onChange={e => {
+              const raw = e.target.value.replace(/\D/g, "");
+              setFuelAmt(raw ? Number(raw).toLocaleString("es-AR") : "");
+            }} placeholder="0" style={{ ...inp, marginBottom: 20 }} />
             {total > 0 && (
               <div style={{ background: C.bg, borderRadius: 10, padding: 12, marginBottom: 16, border: `1px solid ${C.border}` }}>
                 <Row label="Neto" val={fmt(neto)} />
@@ -549,8 +559,32 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
     window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
   };
 
-  const whatsappDriver = (d) => {
-    const msg = "Hola " + d.name + "! 🚕\n\nResumen del período:\n• Facturado: " + fmt(d.facturado) + "\n• Neto: " + fmt(d.neto) + "\n• Tu parte (" + (d.pct ?? 40) + "%): " + fmt(d.chofer) + "\n• *Me tenés que pasar: " + fmt(d.debe) + "*\n\nGracias! 👍";
+  const whatsappDriver = (d, dayFilter) => {
+    // Get records for this driver filtered by current period or specific day
+    const dRecords = dayFilter
+      ? records.filter(r => r.driver_id === d.id && r.date === dayFilter)
+      : filtered.filter(r => r.driver_id === d.id);
+    
+    if (dRecords.length === 0) { alert("No hay registros para este período"); return; }
+    
+    const fact = dRecords.reduce((a, r) => a + Number(r.facturado), 0);
+    const comb = dRecords.reduce((a, r) => a + Number(r.combustible), 0);
+    const neto = dRecords.reduce((a, r) => a + Number(r.neto), 0);
+    const choferPart = dRecords.reduce((a, r) => a + Number(r.chofer), 0);
+    const debe = dRecords.reduce((a, r) => a + Number(r.ganancia), 0);
+    const periodoLabel = dayFilter ? dayFilter : (period === "dia" ? filterDay : period === "semana" ? "Semana del " + filterWeek : filterMonth);
+    
+    const msg = "Hola " + d.name + "! 🚕
+
+📅 *" + periodoLabel + "*
+
+• Facturado: " + fmt(fact) + "
+• Combustible: " + fmt(comb) + "
+• Neto: " + fmt(neto) + "
+• Tu parte (" + (d.pct ?? 40) + "%): " + fmt(choferPart) + "
+• *Me tenés que pasar: " + fmt(debe) + "*
+
+Gracias! 👍";
     window.open("https://wa.me/?text=" + encodeURIComponent(msg), "_blank");
   };
 
@@ -784,7 +818,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                       <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red }}>{fmt(d.combustible)}</div></div>
                       <div><div style={{ color: C.teal }}>Su parte</div><div style={{ color: C.teal }}>{fmt(d.chofer)}</div></div>
                     </div>
-                    <button onClick={() => whatsappDriver(d)} style={{ ...btn("#25d366", "#fff"), fontSize: 13 }}>📲 Enviar resumen por WhatsApp</button>
+                    <WhatsAppBtn d={d} records={records} filtered={filtered} period={period} filterDay={filterDay} filterWeek={filterWeek} filterMonth={filterMonth} whatsappDriver={whatsappDriver} />
                   </div>
                 ))}
               </div>
@@ -948,6 +982,36 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── WhatsApp Button with day selector ───────────────────────────────────────
+function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filterMonth, whatsappDriver }) {
+  const [mode, setMode] = useState("period"); // "period" or "day"
+  const [selectedDay, setSelectedDay] = useState(arDate());
+  
+  // Get unique days this driver has records
+  const driverDays = [...new Set(records.filter(r => r.driver_id === d.id).map(r => r.date))].sort().reverse();
+  
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <button onClick={() => setMode("period")} style={{ flex: 1, background: mode === "period" ? "#25d366" : C.hi, border: "none", borderRadius: 8, padding: "8px", color: mode === "period" ? "#fff" : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+          Período actual
+        </button>
+        <button onClick={() => setMode("day")} style={{ flex: 1, background: mode === "day" ? "#25d366" : C.hi, border: "none", borderRadius: 8, padding: "8px", color: mode === "day" ? "#fff" : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+          Día específico
+        </button>
+      </div>
+      {mode === "day" && (
+        <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} style={{ ...{ background: C.surface, border: "1px solid #1e2d50", borderRadius: 10, padding: "10px 14px", color: "#e2e8f0", fontSize: 13, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" }, marginBottom: 8 }}>
+          {driverDays.map(day => <option key={day} value={day}>{day}</option>)}
+        </select>
+      )}
+      <button onClick={() => whatsappDriver(d, mode === "day" ? selectedDay : null)} style={{ width: "100%", background: "#25d366", border: "none", borderRadius: 12, padding: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+        📲 Enviar resumen por WhatsApp
+      </button>
     </div>
   );
 }
