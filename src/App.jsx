@@ -715,7 +715,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         )}
 
         {tab === 3 && (
-          <PlanillaTab records={records} vehicles={vehicles} drivers={drivers} weeks={weeks} />
+          <PlanillaTab records={records} vehicles={vehicles} drivers={drivers} weeks={weeks} dayoffs={dayoffs} />
         )}
 
         {tab === 4 && (
@@ -804,7 +804,7 @@ function DayoffCard({ drivers, dayoffs, toggleDayoff }) {
   );
 }
 
-function PlanillaTab({ records, vehicles, drivers, weeks }) {
+function PlanillaTab({ records, vehicles, drivers, weeks, dayoffs }) {
   const [planillaWeek, setPlanillaWeek] = useState(weekOf(arDate()));
   const [vista, setVista] = useState("chofer"); // "chofer" | "auto"
 
@@ -828,7 +828,7 @@ function PlanillaTab({ records, vehicles, drivers, weeks }) {
 
   const getVal = (r, key) => key === "mio" ? getMio(r) : Number(r[key]);
 
-  const renderTable = (groupRecords, days) => {
+  const renderTable = (groupRecords, days, driverDayoffs = []) => {
     const totals = { facturado: 0, combustible: 0, neto: 0, mio: 0 };
     days.forEach(day => {
       groupRecords.filter(r => r.date === day).forEach(r => {
@@ -860,9 +860,10 @@ function PlanillaTab({ records, vehicles, drivers, weeks }) {
                   const dayRecs = groupRecords.filter(r => r.date === day);
                   const val = dayRecs.reduce((a, r) => a + getVal(r, row.key), 0);
                   const hasData = dayRecs.length > 0;
+                  const isFranco = !hasData && driverDayoffs.some(o => o.date === day);
                   return (
-                    <td key={day} style={{ textAlign: "center", padding: "3px 4px", color: hasData ? row.color : C.border, fontSize: 10, background: hasData ? C.hi : "transparent", borderRadius: 4 }}>
-                      {hasData ? ("$" + Math.round(val/1000) + "k") : "—"}
+                    <td key={day} style={{ textAlign: "center", padding: "3px 4px", color: hasData ? row.color : isFranco ? "#14b8a6" : C.border, fontSize: isFranco ? 13 : 10, background: hasData ? C.hi : isFranco ? "#14b8a622" : "transparent", borderRadius: 4 }}>
+                      {hasData ? ("$" + Math.round(val/1000) + "k") : isFranco ? (row.key === "facturado" ? "🏖️" : "—") : "—"}
                     </td>
                   );
                 })}
@@ -899,15 +900,20 @@ function PlanillaTab({ records, vehicles, drivers, weeks }) {
         <div>
           {drivers.map(d => {
             const driverRecords = weekRecords.filter(r => r.driver_id === d.id);
-            if (driverRecords.length === 0) return null;
+            const driverDayoffs = dayoffs.filter(o => o.driver_id === d.id);
+            const hasAny = driverRecords.length > 0 || days.some(day => driverDayoffs.some(o => o.date === day));
+            if (!hasAny) return null;
             return (
               <div key={d.id} style={{ ...card, padding: 14, marginBottom: 16 }}>
                 <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white, marginBottom: 12 }}>{d.name}</div>
-                {renderTable(driverRecords, days)}
+                {renderTable(driverRecords, days, driverDayoffs)}
               </div>
             );
           })}
-          {drivers.filter(d => weekRecords.some(r => r.driver_id === d.id)).length === 0 && (
+          {drivers.filter(d => {
+            const driverDayoffs = dayoffs.filter(o => o.driver_id === d.id);
+            return weekRecords.some(r => r.driver_id === d.id) || days.some(day => driverDayoffs.some(o => o.date === day));
+          }).length === 0 && (
             <div style={{ textAlign: "center", padding: 40, color: C.muted }}>No hay registros esta semana</div>
           )}
         </div>
