@@ -1022,6 +1022,52 @@ function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filt
   );
 }
 
+function RecordForm({ form, setForm, onSave, onCancel, title, vehicles, driverPct }) {
+  const parseF = (v) => parseFloat((v || "0").toString().replace(/\./g, "").replace(",", ".")) || 0;
+  const uber = parseF(form.uber), particular = parseF(form.particular), combustible = parseF(form.combustible);
+  const facturado = uber + particular;
+  const neto = facturado - combustible;
+  const pct = (driverPct ?? 40) / 100;
+  const chofer = neto * pct;
+  const ganancia = neto * (1 - pct);
+
+  return (
+    <div style={{ background: C.bg, borderRadius: 12, padding: 14, marginTop: 10, border: "1px solid " + C.border }}>
+      <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>{title}</div>
+      <label style={lbl}>Fecha</label>
+      <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={{ ...inp, marginBottom: 10 }} />
+      <label style={lbl}>Vehículo</label>
+      <select value={form.vehicle_id} onChange={e => setForm(f => ({ ...f, vehicle_id: e.target.value }))} style={{ ...inp, marginBottom: 10 }}>
+        <option value="">Seleccioná vehículo...</option>
+        {vehicles.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+      </select>
+      <label style={lbl}>Uber $</label>
+      <input type="text" inputMode="numeric" value={form.uber}
+        onChange={e => { const r = e.target.value.replace(/\D/g, ""); setForm(f => ({ ...f, uber: r ? Number(r).toLocaleString("es-AR") : "" })); }}
+        placeholder="0" style={{ ...inp, marginBottom: 10 }} />
+      <label style={lbl}>Particulares $ (opcional)</label>
+      <input type="text" inputMode="numeric" value={form.particular}
+        onChange={e => { const r = e.target.value.replace(/\D/g, ""); setForm(f => ({ ...f, particular: r ? Number(r).toLocaleString("es-AR") : "" })); }}
+        placeholder="0" style={{ ...inp, marginBottom: 10 }} />
+      <label style={lbl}>Combustible $</label>
+      <input type="text" inputMode="numeric" value={form.combustible}
+        onChange={e => { const r = e.target.value.replace(/\D/g, ""); setForm(f => ({ ...f, combustible: r ? Number(r).toLocaleString("es-AR") : "" })); }}
+        placeholder="0" style={{ ...inp, marginBottom: 14 }} />
+      {facturado > 0 && (
+        <div style={{ background: C.surface, borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>
+          <Row label="Neto" val={fmt(neto)} />
+          <Row label={"Chofer (" + (driverPct ?? 40) + "%)"} val={fmt(chofer)} color={C.teal} />
+          <Row label="Dueño" val={fmt(ganancia)} color={C.accent} bold />
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={onCancel} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>Cancelar</button>
+        <button onClick={onSave} style={{ ...btn(), flex: 2, fontSize: 13 }}>Guardar ✓</button>
+      </div>
+    </div>
+  );
+}
+
 function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDelete, showToast }) {
   const [pctVal, setPctVal] = useState(String(d.pct ?? 40));
   const [pinVal, setPinVal] = useState(d.pin);
@@ -1039,7 +1085,8 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
   const fmtInput = (v) => v ? Number(String(v).replace(/\D/g, "")).toLocaleString("es-AR") : "";
 
   const calcRec = (f, driverPct) => {
-    const uber = parseF(f.uber), particular = parseF(f.particular), combustible = parseF(f.combustible);
+    const parseLocal = (v) => parseFloat((v || "0").toString().replace(/\./g, "").replace(",", ".")) || 0;
+    const uber = parseLocal(f.uber), particular = parseLocal(f.particular), combustible = parseLocal(f.combustible);
     const facturado = uber + particular;
     const neto = facturado - combustible;
     const pct = (driverPct ?? d.pct ?? 40) / 100;
@@ -1094,36 +1141,6 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
     await onUpdate({ pin: pinVal }); showToast("PIN actualizado ✓");
   };
 
-  const RecordForm = ({ onSave, onCancel, title }) => (
-    <div style={{ background: C.bg, borderRadius: 12, padding: 14, marginTop: 10, border: "1px solid " + C.border }}>
-      <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>{title}</div>
-      <label style={lbl}>Fecha</label>
-      <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
-      <label style={lbl}>Vehículo</label>
-      <select value={form.vehicle_id} onChange={e => setForm({ ...form, vehicle_id: e.target.value })} style={{ ...inp, marginBottom: 10 }}>
-        <option value="">Seleccioná vehículo...</option>
-        {vehicles.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-      </select>
-      <label style={lbl}>Uber $</label>
-      <input type="text" inputMode="numeric" value={form.uber} onChange={e => { const r = e.target.value.replace(/\D/g,""); setForm({...form, uber: r ? Number(r).toLocaleString("es-AR") : ""}); }} placeholder="0" style={{ ...inp, marginBottom: 10 }} />
-      <label style={lbl}>Particulares $ (opcional)</label>
-      <input type="text" inputMode="numeric" value={form.particular} onChange={e => { const r = e.target.value.replace(/\D/g,""); setForm({...form, particular: r ? Number(r).toLocaleString("es-AR") : ""}); }} placeholder="0" style={{ ...inp, marginBottom: 10 }} />
-      <label style={lbl}>Combustible $</label>
-      <input type="text" inputMode="numeric" value={form.combustible} onChange={e => { const r = e.target.value.replace(/\D/g,""); setForm({...form, combustible: r ? Number(r).toLocaleString("es-AR") : ""}); }} placeholder="0" style={{ ...inp, marginBottom: 14 }} />
-      {(() => { const c = calcRec(form, d.pct); return c.facturado > 0 ? (
-        <div style={{ background: C.surface, borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>
-          <Row label="Neto" val={fmt(c.neto)} />
-          <Row label={"Chofer (" + (d.pct ?? 40) + "%)"} val={fmt(c.chofer)} color={C.teal} />
-          <Row label="Dueño" val={fmt(c.ganancia)} color={C.accent} bold />
-        </div>
-      ) : null; })()}
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={onCancel} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>Cancelar</button>
-        <button onClick={onSave} style={{ ...btn(), flex: 2, fontSize: 13 }}>Guardar ✓</button>
-      </div>
-    </div>
-  );
-
   return (
     <div style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
@@ -1159,7 +1176,7 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
         </button>
       </div>
 
-      {showAddDay && !editingRec && <RecordForm title="Cargar día nuevo" onSave={saveNewDay} onCancel={() => { setShowAddDay(false); setForm(emptyForm); }} />}
+      {showAddDay && !editingRec && <RecordForm title="Cargar día nuevo" form={form} setForm={setForm} vehicles={vehicles} driverPct={d.pct} onSave={saveNewDay} onCancel={() => { setShowAddDay(false); setForm(emptyForm); }} />}
 
       {showRecords && (
         <div style={{ marginTop: 12 }}>
@@ -1167,7 +1184,7 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
           {driverRecords.map(r => (
             <div key={r.id}>
               {editingRec?.id === r.id ? (
-                <RecordForm title={"Editando " + r.date} onSave={saveEditDay} onCancel={() => { setEditingRec(null); setForm(emptyForm); }} />
+                <RecordForm title={"Editando " + r.date} form={form} setForm={setForm} vehicles={vehicles} driverPct={editingRec.driver_pct} onSave={saveEditDay} onCancel={() => { setEditingRec(null); setForm(emptyForm); }} />
               ) : (
                 <div style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8, border: "1px solid " + C.border }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
