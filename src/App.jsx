@@ -246,7 +246,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       uber: parseAmt(uberAmt), particular: parseAmt(particular),
       facturado: total, combustible: fuel, neto, ganancia: ownerCut, chofer: driverCut,
       driver_pct: driver.pct ?? 40,
-      uber_img: uberImgUrl, fuel_img: fuelImgUrl,
+      uber_img: uberImgUrl, fuel_img: fuelImgUrl, paid: false,
     };
     try {
       await db.insert("records", rec);
@@ -440,6 +440,13 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
     return { ...d, facturado: fac, combustible: rs.reduce((a, r) => a + Number(r.combustible), 0), neto: rs.reduce((a, r) => a + Number(r.neto), 0), chofer: rs.reduce((a, r) => a + Number(r.chofer), 0), debe: rs.reduce((a, r) => a + Number(r.ganancia), 0), dias: rs.length, promDiario: rs.length > 0 ? fac / rs.length : 0 };
   }).filter(d => d.facturado > 0).sort((a, b) => b.facturado - a.facturado);
 
+  // Pending payment per driver
+  const pendingByDriver = drivers.map(d => {
+    const unpaid = filtered.filter(r => r.driver_id === d.id && !r.paid);
+    return { id: d.id, name: d.name, pending: unpaid.reduce((a, r) => a + Number(r.ganancia), 0), dias: unpaid.length };
+  }).filter(d => d.pending > 0);
+  const totalPending = pendingByDriver.reduce((a, d) => a + d.pending, 0);
+
   const addDriver = async () => {
     if (!newDrv.name.trim() || newDrv.pin.length !== 4) { showToast("Nombre y PIN de 4 dígitos requeridos"); return; }
     if (drivers.some(d => d.pin === newDrv.pin)) { showToast("Ese PIN ya existe"); return; }
@@ -563,6 +570,23 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
             <button onClick={sendReminder} style={{ ...btn("#25d366", "#fff"), marginBottom: 16 }}>
               📲 Ver quién no cargó ayer → WhatsApp
             </button>
+            {pendingByDriver.length > 0 && (
+              <div style={{ ...card, borderColor: C.accent + "44", marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>💰 Pendiente de cobro</div>
+                  <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: C.accent }}>{fmt(totalPending)}</div>
+                </div>
+                {pendingByDriver.map(d => (
+                  <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderTop: "1px solid " + C.border }}>
+                    <div>
+                      <div style={{ fontSize: 13, color: C.white, fontWeight: 600 }}>{d.name}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>{d.dias} día{d.dias > 1 ? "s" : ""} sin pagar</div>
+                    </div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, color: C.accent }}>{fmt(d.pending)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <DayoffCard drivers={drivers} dayoffs={dayoffs} toggleDayoff={toggleDayoff} />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
               {[
@@ -1100,7 +1124,7 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
     const calc = calcRec(form, d.pct);
     const rec = {
       id: Date.now().toString(), date: form.date, week: weekOf(form.date), month: monthOf(form.date),
-      driver_id: d.id, vehicle_id: form.vehicle_id, driver_pct: d.pct ?? 40,
+      driver_id: d.id, vehicle_id: form.vehicle_id, driver_pct: d.pct ?? 40, paid: false,
       ...calc,
     };
     try {
@@ -1181,23 +1205,50 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
       {showRecords && (
         <div style={{ marginTop: 12 }}>
           {driverRecords.length === 0 && <div style={{ textAlign: "center", padding: 20, color: C.muted, fontSize: 12 }}>Sin registros</div>}
+          {driverRecords.filter(r => !r.paid).length > 1 && (
+            <button onClick={async () => {
+              const unpaid = driverRecords.filter(r => !r.paid);
+              try {
+                await Promise.all(unpaid.map(r => db.update("records", r.id, { paid: true })));
+                setRecords(prev => prev.map(r => r.driver_id === d.id ? { ...r, paid: true } : r));
+                showToast("Todos los días marcados como pagados ✓");
+              } catch { showToast("Error al actualizar"); }
+            }} style={{ width: "100%", background: "#16a34a22", border: "1px solid #16a34a44", borderRadius: 10, padding: "10px", color: "#4ade80", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", marginBottom: 10 }}>
+              ✓ Marcar todos como pagados ({driverRecords.filter(r => !r.paid).length} días)
+            </button>
+          )}
           {driverRecords.map(r => (
             <div key={r.id}>
               {editingRec?.id === r.id ? (
                 <RecordForm title={"Editando " + r.date} form={form} setForm={setForm} vehicles={vehicles} driverPct={editingRec.driver_pct} onSave={saveEditDay} onCancel={() => { setEditingRec(null); setForm(emptyForm); }} />
               ) : (
-                <div style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8, border: "1px solid " + C.border }}>
+                <div style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8, border: "1px solid " + (r.paid ? "#16a34a44" : C.border), opacity: r.paid ? 0.6 : 1 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{r.date}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{r.date}</div>
+                        {r.paid && <span style={{ fontSize: 9, background: "#16a34a33", color: "#4ade80", padding: "2px 7px", borderRadius: 100, letterSpacing: 1 }}>PAGADO</span>}
+                      </div>
                       <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>{vehicles.find(v => v.id === r.vehicle_id)?.name || r.vehicle_id}</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
                         <div><span style={{ color: C.muted }}>Fact: </span><span style={{ color: C.white }}>{fmt(r.facturado)}</span></div>
                         <div><span style={{ color: C.muted }}>Comb: </span><span style={{ color: C.red }}>{fmt(r.combustible)}</span></div>
-                        <div><span style={{ color: C.muted }}>Chofer: </span><span style={{ color: C.teal }}>{fmt(r.chofer)}</span></div>
+                        <div><span style={{ color: C.muted }}>Me debe: </span><span style={{ color: r.paid ? "#4ade80" : C.accent }}>{fmt(r.ganancia)}</span></div>
                       </div>
                     </div>
-                    <button onClick={() => startEdit(r)} style={{ background: C.accent + "22", border: "1px solid " + C.accent + "44", borderRadius: 8, padding: "6px 12px", color: C.accent, fontSize: 12, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>✏️ Editar</button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, marginLeft: 8 }}>
+                      <button onClick={async () => {
+                        const newPaid = !r.paid;
+                        try {
+                          await db.update("records", r.id, { paid: newPaid });
+                          setRecords(prev => prev.map(x => x.id === r.id ? { ...x, paid: newPaid } : x));
+                          showToast(newPaid ? "Marcado como pagado ✓" : "Marcado como pendiente");
+                        } catch { showToast("Error al actualizar"); }
+                      }} style={{ background: r.paid ? "#16a34a33" : "#f59e0b22", border: "1px solid " + (r.paid ? "#16a34a66" : "#f59e0b44"), borderRadius: 8, padding: "5px 10px", color: r.paid ? "#4ade80" : C.accent, fontSize: 11, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+                        {r.paid ? "✓ Pagado" : "$ Pendiente"}
+                      </button>
+                      <button onClick={() => startEdit(r)} style={{ background: C.accent + "22", border: "1px solid " + C.accent + "44", borderRadius: 8, padding: "5px 10px", color: C.accent, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏️ Editar</button>
+                    </div>
                   </div>
                 </div>
               )}
