@@ -28,6 +28,16 @@ const db = {
   delete: (table, id) => supa(`${table}?id=eq.${id}`, "DELETE"),
 };
 
+const uploadImg = async (file, path) => {
+  const res = await fetch(`${SUPA_URL}/storage/v1/object/comprobantes/${path}`, {
+    method: "POST",
+    headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": file.type },
+    body: file,
+  });
+  if (!res.ok) return null;
+  return `${SUPA_URL}/storage/v1/object/public/comprobantes/${path}`;
+};
+
 const DEFAULT_VEHICLES = [
   { id: "v1", name: "Volkswagen Virtus AH401ZN", type: "own", owner_pct: 100 },
   { id: "v2", name: "Fiat Cronos AH668PJ", type: "own", owner_pct: 100 },
@@ -188,6 +198,8 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   const [particular, setParticular] = useState("");
   const [uberPreview, setUberPreview] = useState("");
   const [fuelPreview, setFuelPreview] = useState("");
+  const [uberFile, setUberFile] = useState(null);
+  const [fuelFile, setFuelFile] = useState(null);
   const [selectedDate, setSelectedDate] = useState(arDate());
 
   const myRecords = records.filter(r => r.driver_id === driver.id).sort((a, b) => b.date.localeCompare(a.date));
@@ -217,17 +229,24 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   const handleImg = async (file, type) => {
     if (!file) return;
     const url = URL.createObjectURL(file);
-    if (type === "uber") setUberPreview(url);
-    else setFuelPreview(url);
+    if (type === "uber") { setUberPreview(url); setUberFile(file); }
+    else { setFuelPreview(url); setFuelFile(file); }
   };
 
   const submit = async () => {
+    const recId = Date.now().toString();
+    let uberImgUrl = null, fuelImgUrl = null;
+    try {
+      if (uberFile) uberImgUrl = await uploadImg(uberFile, `${recId}_uber.${uberFile.name.split(".").pop()}`);
+      if (fuelFile) fuelImgUrl = await uploadImg(fuelFile, `${recId}_fuel.${fuelFile.name.split(".").pop()}`);
+    } catch {}
     const rec = {
-      id: Date.now().toString(), date: selectedDate, week: weekOf(selectedDate), month: monthOf(selectedDate),
+      id: recId, date: selectedDate, week: weekOf(selectedDate), month: monthOf(selectedDate),
       driver_id: driver.id, vehicle_id: vehicleId,
       uber: parseAmt(uberAmt), particular: parseAmt(particular),
       facturado: total, combustible: fuel, neto, ganancia: ownerCut, chofer: driverCut,
       driver_pct: driver.pct ?? 40,
+      uber_img: uberImgUrl, fuel_img: fuelImgUrl,
     };
     try {
       await db.insert("records", rec);
@@ -235,7 +254,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       showToast("Enviado al dueño ✓");
       setScreen("form");
       setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular(""); setSelectedDate(arDate());
-      setUberPreview(""); setFuelPreview("");
+      setUberPreview(""); setFuelPreview(""); setUberFile(null); setFuelFile(null);
     } catch { showToast("Error al guardar. Intentá de nuevo."); }
   };
 
@@ -378,6 +397,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   const [newDrv, setNewDrv] = useState({ name: "", pin: "", vehicle_id: "", pct: "40" });
   const [newOwnerPin, setNewOwnerPin] = useState(ownerPin);
   const [newExpense, setNewExpense] = useState({ vehicle_id: "", category: "mecanico", description: "", amount: "", date: arDate() });
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
   const weeks = [...new Set(records.map(r => r.week))].sort().reverse();
   const months = [...new Set(records.map(r => r.month || r.date.slice(0,7)))].sort().reverse();
@@ -492,6 +512,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   const catLabel = (c) => ({ mecanico: "🔧 Mecánico", repuesto: "⚙️ Repuesto", manoobra: "👷 Mano de obra", otro: "📦 Otro" })[c] || c;
 
   return (
+    <>
     <div style={{ minHeight: "100vh" }}>
       <div style={{ background: C.surface, borderBottom: "1px solid " + C.border, padding: "16px 20px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -596,11 +617,14 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                                 <span style={{ color: C.muted }}>{"Tuyo: "}</span><span style={{ color: C.accent, fontWeight: 700 }}>{fmt(myGain)}</span>
                               </div>
                             </div>
-                            <button onClick={async () => {
-                              if (!window.confirm("¿Borrar este registro?")) return;
-                              try { await db.delete("records", r.id); setRecords(prev => prev.filter(x => x.id !== r.id)); }
-                              catch { showToast("Error al borrar"); }
-                            }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer", flexShrink: 0 }}>×</button>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                              <button onClick={() => setSelectedRecord(r)} style={{ background: "#14b8a622", border: "1px solid #14b8a644", borderRadius: 6, padding: "4px 8px", color: "#14b8a6", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>📷 Fotos</button>
+                              <button onClick={async () => {
+                                if (!window.confirm("¿Borrar este registro?")) return;
+                                try { await db.delete("records", r.id); setRecords(prev => prev.filter(x => x.id !== r.id)); }
+                                catch { showToast("Error al borrar"); }
+                              }} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer" }}>×</button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -709,7 +733,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
             )}
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", margin: "20px 0 12px" }}>Editar choferes</div>
             {drivers.map(d => (
-              <DriverCard key={d.id} d={d} drivers={drivers} onUpdate={(changes) => updateDriver(d.id, changes)} onDelete={() => deleteDriver(d.id)} showToast={showToast} />
+              <DriverCard key={d.id} d={d} drivers={drivers} records={records} vehicles={vehicles} setRecords={setRecords} onUpdate={(changes) => updateDriver(d.id, changes)} onDelete={() => deleteDriver(d.id)} showToast={showToast} />
             ))}
           </div>
         )}
@@ -774,6 +798,8 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         )}
       </div>
     </div>
+    {selectedRecord && <PhotoModal record={selectedRecord} dName={dName} vName={vName} onClose={() => setSelectedRecord(null)} />}
+    </>
   );
 }
 
@@ -943,6 +969,37 @@ function PlanillaTab({ records, vehicles, drivers, weeks, dayoffs }) {
   );
 }
 
+function PhotoModal({ record, dName, vName, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 1000, display: "flex", flexDirection: "column", padding: 20, overflowY: "auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 700, color: "#fff" }}>{dName(record.driver_id)}</div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>{record.date} · {vName(record.vehicle_id)}</div>
+        </div>
+        <button onClick={onClose} style={{ background: "none", border: "1px solid #1e2d50", borderRadius: 8, padding: "8px 14px", color: "#e2e8f0", fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>✕ Cerrar</button>
+      </div>
+      <div style={{ background: "#0e1525", borderRadius: 14, padding: 14, marginBottom: 12, border: "1px solid #1e2d50" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 12, marginBottom: 12 }}>
+          <div><div style={{ color: "#64748b", fontSize: 10 }}>Facturado</div><div style={{ color: "#e2e8f0", fontWeight: 600 }}>{"$" + Number(record.facturado).toLocaleString("es-AR")}</div></div>
+          <div><div style={{ color: "#64748b", fontSize: 10 }}>Combustible</div><div style={{ color: "#f43f5e", fontWeight: 600 }}>{"$" + Number(record.combustible).toLocaleString("es-AR")}</div></div>
+          <div><div style={{ color: "#64748b", fontSize: 10 }}>Neto</div><div style={{ color: "#e2e8f0", fontWeight: 600 }}>{"$" + Number(record.neto).toLocaleString("es-AR")}</div></div>
+        </div>
+      </div>
+      <div style={{ fontSize: 10, color: "#64748b", letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>📱 Captura Uber</div>
+      {record.uber_img
+        ? <img src={record.uber_img} alt="Uber" style={{ width: "100%", borderRadius: 12, marginBottom: 16, border: "1px solid #1e2d50" }} />
+        : <div style={{ background: "#0e1525", borderRadius: 12, padding: 30, textAlign: "center", color: "#64748b", fontSize: 13, marginBottom: 16, border: "1px solid #1e2d50" }}>Sin imagen cargada</div>
+      }
+      <div style={{ fontSize: 10, color: "#64748b", letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>⛽ Ticket combustible</div>
+      {record.fuel_img
+        ? <img src={record.fuel_img} alt="Combustible" style={{ width: "100%", borderRadius: 12, marginBottom: 16, border: "1px solid #1e2d50" }} />
+        : <div style={{ background: "#0e1525", borderRadius: 12, padding: 30, textAlign: "center", color: "#64748b", fontSize: 13, marginBottom: 16, border: "1px solid #1e2d50" }}>Sin imagen cargada</div>
+      }
+    </div>
+  );
+}
+
 function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filterMonth, whatsappDriver }) {
   const [mode, setMode] = useState("period");
   const [selectedDay, setSelectedDay] = useState(arDate());
@@ -965,15 +1022,108 @@ function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filt
   );
 }
 
-function DriverCard({ d, drivers, onUpdate, onDelete, showToast }) {
+function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDelete, showToast }) {
   const [pctVal, setPctVal] = useState(String(d.pct ?? 40));
   const [pinVal, setPinVal] = useState(d.pin);
+  const [showRecords, setShowRecords] = useState(false);
+  const [showAddDay, setShowAddDay] = useState(false);
+  const [editingRec, setEditingRec] = useState(null);
+
+  // Form for add/edit
+  const emptyForm = { date: arDate(), vehicle_id: "", uber: "", particular: "", combustible: "" };
+  const [form, setForm] = useState(emptyForm);
+
+  const driverRecords = records.filter(r => r.driver_id === d.id).sort((a, b) => b.date.localeCompare(a.date));
+
+  const parseF = (v) => parseFloat((v || "0").toString().replace(/\./g, "").replace(",", ".")) || 0;
+  const fmtInput = (v) => v ? Number(String(v).replace(/\D/g, "")).toLocaleString("es-AR") : "";
+
+  const calcRec = (f, driverPct) => {
+    const uber = parseF(f.uber), particular = parseF(f.particular), combustible = parseF(f.combustible);
+    const facturado = uber + particular;
+    const neto = facturado - combustible;
+    const pct = (driverPct ?? d.pct ?? 40) / 100;
+    const chofer = neto * pct;
+    const ganancia = neto * (1 - pct);
+    return { uber, particular, facturado, combustible, neto, chofer, ganancia };
+  };
+
+  const saveNewDay = async () => {
+    if (!form.date || !form.vehicle_id) { showToast("Completá fecha y vehículo"); return; }
+    const calc = calcRec(form, d.pct);
+    const rec = {
+      id: Date.now().toString(), date: form.date, week: weekOf(form.date), month: monthOf(form.date),
+      driver_id: d.id, vehicle_id: form.vehicle_id, driver_pct: d.pct ?? 40,
+      ...calc,
+    };
+    try {
+      await db.insert("records", rec);
+      setRecords(prev => [...prev, rec]);
+      showToast("Día cargado ✓");
+      setShowAddDay(false);
+      setForm(emptyForm);
+    } catch { showToast("Error al guardar"); }
+  };
+
+  const saveEditDay = async () => {
+    if (!form.vehicle_id) { showToast("Seleccioná vehículo"); return; }
+    const calc = calcRec(form, editingRec.driver_pct);
+    const changes = { date: form.date, week: weekOf(form.date), month: monthOf(form.date), vehicle_id: form.vehicle_id, ...calc };
+    try {
+      await db.update("records", editingRec.id, changes);
+      setRecords(prev => prev.map(r => r.id === editingRec.id ? { ...r, ...changes } : r));
+      showToast("Registro actualizado ✓");
+      setEditingRec(null);
+      setForm(emptyForm);
+    } catch { showToast("Error al actualizar"); }
+  };
+
+  const startEdit = (r) => {
+    setEditingRec(r);
+    setShowAddDay(false);
+    setForm({
+      date: r.date, vehicle_id: r.vehicle_id,
+      uber: fmtInput(r.uber), particular: fmtInput(r.particular), combustible: fmtInput(r.combustible),
+    });
+  };
+
   const savePct = async () => { const val = Math.min(100, Math.max(0, parseFloat(pctVal) || 40)); await onUpdate({ pct: val }); showToast("Porcentaje actualizado ✓"); };
   const savePin = async () => {
     if (pinVal.length !== 4) { showToast("El PIN debe tener 4 dígitos"); return; }
     if (drivers.some(dr => dr.id !== d.id && dr.pin === pinVal)) { showToast("Ese PIN ya lo usa otro chofer"); return; }
     await onUpdate({ pin: pinVal }); showToast("PIN actualizado ✓");
   };
+
+  const RecordForm = ({ onSave, onCancel, title }) => (
+    <div style={{ background: C.bg, borderRadius: 12, padding: 14, marginTop: 10, border: "1px solid " + C.border }}>
+      <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>{title}</div>
+      <label style={lbl}>Fecha</label>
+      <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+      <label style={lbl}>Vehículo</label>
+      <select value={form.vehicle_id} onChange={e => setForm({ ...form, vehicle_id: e.target.value })} style={{ ...inp, marginBottom: 10 }}>
+        <option value="">Seleccioná vehículo...</option>
+        {vehicles.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+      </select>
+      <label style={lbl}>Uber $</label>
+      <input type="text" inputMode="numeric" value={form.uber} onChange={e => { const r = e.target.value.replace(/\D/g,""); setForm({...form, uber: r ? Number(r).toLocaleString("es-AR") : ""}); }} placeholder="0" style={{ ...inp, marginBottom: 10 }} />
+      <label style={lbl}>Particulares $ (opcional)</label>
+      <input type="text" inputMode="numeric" value={form.particular} onChange={e => { const r = e.target.value.replace(/\D/g,""); setForm({...form, particular: r ? Number(r).toLocaleString("es-AR") : ""}); }} placeholder="0" style={{ ...inp, marginBottom: 10 }} />
+      <label style={lbl}>Combustible $</label>
+      <input type="text" inputMode="numeric" value={form.combustible} onChange={e => { const r = e.target.value.replace(/\D/g,""); setForm({...form, combustible: r ? Number(r).toLocaleString("es-AR") : ""}); }} placeholder="0" style={{ ...inp, marginBottom: 14 }} />
+      {(() => { const c = calcRec(form, d.pct); return c.facturado > 0 ? (
+        <div style={{ background: C.surface, borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 12 }}>
+          <Row label="Neto" val={fmt(c.neto)} />
+          <Row label={"Chofer (" + (d.pct ?? 40) + "%)"} val={fmt(c.chofer)} color={C.teal} />
+          <Row label="Dueño" val={fmt(c.ganancia)} color={C.accent} bold />
+        </div>
+      ) : null; })()}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={onCancel} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>Cancelar</button>
+        <button onClick={onSave} style={{ ...btn(), flex: 2, fontSize: 13 }}>Guardar ✓</button>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
@@ -989,13 +1139,55 @@ function DriverCard({ d, drivers, onUpdate, onDelete, showToast }) {
           <button onClick={savePct} style={{ background: C.accent, border: "none", borderRadius: 8, padding: "8px 14px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Guardar</button>
         </div>
       </div>
-      <div style={{ background: C.hi, borderRadius: 10, padding: 12 }}>
+      <div style={{ background: C.hi, borderRadius: 10, padding: 12, marginBottom: 10 }}>
         <div style={{ fontSize: 10, color: C.teal, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>PIN de acceso</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <input type="number" value={pinVal} onChange={e => setPinVal(e.target.value.slice(0, 4))} style={{ ...inp, width: 90, textAlign: "center", padding: "8px", fontSize: 18, fontWeight: 700, color: C.teal, letterSpacing: 4 }} />
           <button onClick={savePin} style={{ background: C.teal, border: "none", borderRadius: 8, padding: "8px 14px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Guardar</button>
         </div>
       </div>
+
+      {/* Add day / view records buttons */}
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <button onClick={() => { setShowAddDay(!showAddDay); setEditingRec(null); setForm(emptyForm); }}
+          style={{ flex: 1, background: showAddDay ? C.accent : C.hi, border: "1px solid " + C.border, borderRadius: 10, padding: "10px", color: showAddDay ? "#000" : C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+          + Agregar día
+        </button>
+        <button onClick={() => { setShowRecords(!showRecords); setShowAddDay(false); setEditingRec(null); }}
+          style={{ flex: 1, background: showRecords ? C.teal : C.hi, border: "1px solid " + C.border, borderRadius: 10, padding: "10px", color: showRecords ? "#000" : C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+          {showRecords ? "Ocultar días" : "Ver días (" + driverRecords.length + ")"}
+        </button>
+      </div>
+
+      {showAddDay && !editingRec && <RecordForm title="Cargar día nuevo" onSave={saveNewDay} onCancel={() => { setShowAddDay(false); setForm(emptyForm); }} />}
+
+      {showRecords && (
+        <div style={{ marginTop: 12 }}>
+          {driverRecords.length === 0 && <div style={{ textAlign: "center", padding: 20, color: C.muted, fontSize: 12 }}>Sin registros</div>}
+          {driverRecords.map(r => (
+            <div key={r.id}>
+              {editingRec?.id === r.id ? (
+                <RecordForm title={"Editando " + r.date} onSave={saveEditDay} onCancel={() => { setEditingRec(null); setForm(emptyForm); }} />
+              ) : (
+                <div style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8, border: "1px solid " + C.border }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{r.date}</div>
+                      <div style={{ fontSize: 11, color: C.muted, marginBottom: 4 }}>{vehicles.find(v => v.id === r.vehicle_id)?.name || r.vehicle_id}</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
+                        <div><span style={{ color: C.muted }}>Fact: </span><span style={{ color: C.white }}>{fmt(r.facturado)}</span></div>
+                        <div><span style={{ color: C.muted }}>Comb: </span><span style={{ color: C.red }}>{fmt(r.combustible)}</span></div>
+                        <div><span style={{ color: C.muted }}>Chofer: </span><span style={{ color: C.teal }}>{fmt(r.chofer)}</span></div>
+                      </div>
+                    </div>
+                    <button onClick={() => startEdit(r)} style={{ background: C.accent + "22", border: "1px solid " + C.accent + "44", borderRadius: 8, padding: "6px 12px", color: C.accent, fontSize: 12, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>✏️ Editar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
