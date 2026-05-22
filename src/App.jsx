@@ -387,7 +387,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
 }
 
 function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload }) {
-  const TABS = ["Dashboard", "Vehículos", "Choferes", "Planilla", "Gastos", "Config"];
+  const TABS = ["Dashboard", "Vehículos", "Choferes", "Planilla", "Gastos", "Resumen", "Config"];
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState("dia");
   const [filterDay, setFilterDay] = useState(arDate());
@@ -811,6 +811,10 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         )}
 
         {tab === 5 && (
+          <ResumeTab records={records} vehicles={vehicles} drivers={drivers} expenses={expenses} weeks={weeks} months={months} />
+        )}
+
+        {tab === 6 && (
           <div>
             <div style={card}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Tu PIN de dueño</div>
@@ -1041,6 +1045,244 @@ function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filt
       )}
       <button onClick={() => whatsappDriver(d, mode === "day" ? selectedDay : null)} style={{ width: "100%", background: "#25d366", border: "none", borderRadius: 12, padding: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
         📲 Enviar resumen por WhatsApp
+      </button>
+    </div>
+  );
+}
+
+function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
+  const [period, setPeriod] = useState("semana");
+  const [selectedWeek, setSelectedWeek] = useState(weeks[0] || weekOf(arDate()));
+  const [selectedMonth, setSelectedMonth] = useState(months[0] || monthOf(arDate()));
+
+  const filtered = records.filter(r =>
+    period === "semana" ? r.week === selectedWeek : (r.month || r.date.slice(0,7)) === selectedMonth
+  );
+  const filteredExp = expenses.filter(e =>
+    period === "semana" ? weekOf(e.date) === selectedWeek : e.date.slice(0,7) === selectedMonth
+  );
+
+  // Per vehicle stats
+  const vStats = vehicles.map(v => {
+    const rs = filtered.filter(r => r.vehicle_id === v.id);
+    const exps = filteredExp.filter(e => e.vehicle_id === v.id);
+    const dias = rs.length;
+    const facturado = rs.reduce((a, r) => a + Number(r.facturado), 0);
+    const combustible = rs.reduce((a, r) => a + Number(r.combustible), 0);
+    const neto = rs.reduce((a, r) => a + Number(r.neto), 0);
+    const totalChofer = rs.reduce((a, r) => a + Number(r.chofer), 0);
+    const gastosMec = exps.reduce((a, e) => a + Number(e.amount), 0);
+    const ownerPct = Number(v.owner_pct) || 100;
+    const gananciaBruta = neto - totalChofer;
+    const ganancia = (v.type === "own" ? gananciaBruta : gananciaBruta * ownerPct / 100) - gastosMec;
+    return { ...v, dias, facturado, combustible, neto, gastosMec, ganancia,
+      promFact: dias > 0 ? facturado / dias : 0,
+      promComb: dias > 0 ? combustible / dias : 0,
+      promGan: dias > 0 ? ganancia / dias : 0,
+    };
+  }).filter(v => v.dias > 0).sort((a, b) => b.ganancia - a.ganancia);
+
+  // Per driver stats
+  const dStats = drivers.map(d => {
+    const rs = filtered.filter(r => r.driver_id === d.id);
+    const dias = rs.length;
+    const facturado = rs.reduce((a, r) => a + Number(r.facturado), 0);
+    const combustible = rs.reduce((a, r) => a + Number(r.combustible), 0);
+    const neto = rs.reduce((a, r) => a + Number(r.neto), 0);
+    const chofer = rs.reduce((a, r) => a + Number(r.chofer), 0);
+    const ganancia = rs.reduce((a, r) => {
+      const v = vehicles.find(vv => vv.id === r.vehicle_id);
+      const ownerPct = v ? Number(v.owner_pct) : 100;
+      return a + (v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia));
+    }, 0);
+    return { ...d, dias, facturado, combustible, neto, chofer, ganancia,
+      promFact: dias > 0 ? facturado / dias : 0,
+    };
+  }).filter(d => d.dias > 0).sort((a, b) => b.ganancia - a.ganancia);
+
+  const totalFact = vStats.reduce((a, v) => a + v.facturado, 0);
+  const totalGan = vStats.reduce((a, v) => a + v.ganancia, 0);
+  const totalComb = vStats.reduce((a, v) => a + v.combustible, 0);
+  const totalDias = filtered.length;
+
+  const periodLabel = period === "semana" ? "Semana del " + selectedWeek : selectedMonth;
+
+  const generatePDF = () => {
+    const w = window.open("", "_blank");
+    w.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>Resumen ${periodLabel}</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; color: #1a1a2e; padding: 32px; font-size: 13px; }
+      h1 { font-size: 22px; color: #0f1f3d; margin-bottom: 4px; }
+      .sub { color: #64748b; font-size: 12px; margin-bottom: 24px; }
+      h2 { font-size: 15px; color: #0f1f3d; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #f59e0b; }
+      .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+      .sum-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+      .sum-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+      .sum-val { font-size: 18px; font-weight: 700; color: #0f1f3d; }
+      .sum-val.accent { color: #f59e0b; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+      th { background: #0f1f3d; color: #fff; padding: 9px 10px; text-align: left; font-size: 11px; letter-spacing: 0.5px; }
+      td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
+      tr:nth-child(even) td { background: #f8fafc; }
+      .rank { font-weight: 700; color: #f59e0b; margin-right: 4px; }
+      .ganancia { font-weight: 700; color: #16a34a; }
+      .muted { color: #64748b; }
+      .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 11px; text-align: center; }
+      @media print { body { padding: 20px; } }
+    </style>
+    </head><body>
+    <h1>📊 Resumen de flota</h1>
+    <div class="sub">${periodLabel} · Generado el ${new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</div>
+
+    <div class="summary-grid">
+      <div class="sum-card"><div class="sum-label">Facturado total</div><div class="sum-val">${fmt(totalFact)}</div></div>
+      <div class="sum-card"><div class="sum-label">Combustible</div><div class="sum-val">${fmt(totalComb)}</div></div>
+      <div class="sum-card"><div class="sum-label">Mi ganancia</div><div class="sum-val accent">${fmt(totalGan)}</div></div>
+      <div class="sum-card"><div class="sum-label">Días trabajados</div><div class="sum-val">${totalDias}</div></div>
+    </div>
+
+    <h2>🚗 Por vehículo</h2>
+    <table>
+      <tr>
+        <th>#</th><th>Vehículo</th><th>Días</th><th>Facturado</th><th>Combustible</th><th>Gastos mec.</th><th>Prom/día</th><th>Mi ganancia</th>
+      </tr>
+      ${vStats.map((v, i) => `<tr>
+        <td><span class="rank">${i+1}</span></td>
+        <td><strong>${v.name}</strong><br><span class="muted">${v.type === "own" ? "Propio" : "Tercero " + v.owner_pct + "%"}</span></td>
+        <td>${v.dias}</td>
+        <td>${fmt(v.facturado)}</td>
+        <td>${fmt(v.combustible)}</td>
+        <td>${fmt(v.gastosMec)}</td>
+        <td>${fmt(v.promFact)}/día</td>
+        <td class="ganancia">${fmt(v.ganancia)}</td>
+      </tr>`).join("")}
+      <tr style="font-weight:700;background:#f1f5f9">
+        <td colspan="2">TOTAL</td>
+        <td>${totalDias}</td>
+        <td>${fmt(totalFact)}</td>
+        <td>${fmt(totalComb)}</td>
+        <td>${fmt(filteredExp.reduce((a,e) => a+Number(e.amount),0))}</td>
+        <td>—</td>
+        <td class="ganancia">${fmt(totalGan)}</td>
+      </tr>
+    </table>
+
+    <h2>👤 Por chofer</h2>
+    <table>
+      <tr>
+        <th>#</th><th>Chofer</th><th>Días</th><th>Facturado</th><th>Combustible</th><th>Prom/día</th><th>Ganancia que dejó</th>
+      </tr>
+      ${dStats.map((d, i) => `<tr>
+        <td><span class="rank">${i+1}</span></td>
+        <td><strong>${d.name}</strong></td>
+        <td>${d.dias}</td>
+        <td>${fmt(d.facturado)}</td>
+        <td>${fmt(d.combustible)}</td>
+        <td>${fmt(d.promFact)}/día</td>
+        <td class="ganancia">${fmt(d.ganancia)}</td>
+      </tr>`).join("")}
+    </table>
+
+    <div class="footer">Mi Flota · gestionmiflota.vercel.app</div>
+    <script>window.onload = () => window.print();</script>
+    </body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <button onClick={() => setPeriod("semana")} style={{ flex: 1, background: period === "semana" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px", color: period === "semana" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Semana</button>
+          <button onClick={() => setPeriod("mes")} style={{ flex: 1, background: period === "mes" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "10px", color: period === "mes" ? "#000" : C.text, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Mes</button>
+        </div>
+        {period === "semana" && (
+          <select value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)} style={inp}>
+            {weeks.length === 0 && <option value={weekOf(arDate())}>Semana actual</option>}
+            {weeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
+          </select>
+        )}
+        {period === "mes" && (
+          <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} style={inp}>
+            {months.length === 0 && <option value={monthOf(arDate())}>{monthOf(arDate())}</option>}
+            {months.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* Summary cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+        {[
+          { label: "Facturado total", val: fmt(totalFact), color: C.text },
+          { label: "Combustible", val: fmt(totalComb), color: C.red },
+          { label: "Mi ganancia", val: fmt(totalGan), color: C.accent },
+          { label: "Días trabajados", val: totalDias, color: C.teal },
+        ].map(c => (
+          <div key={c.label} style={{ background: C.surface, borderRadius: 12, padding: 14, border: "1px solid " + C.border }}>
+            <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>{c.label}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: c.color, fontFamily: "'Syne', sans-serif" }}>{c.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Por vehículo */}
+      <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>🚗 Por vehículo</div>
+      {vStats.length === 0 && <div style={{ textAlign: "center", padding: 20, color: C.muted, fontSize: 12, marginBottom: 16 }}>Sin registros</div>}
+      {vStats.map((v, i) => (
+        <div key={v.id} style={{ ...card, borderColor: i === 0 ? C.accent + "44" : C.border, padding: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <div>
+              {i === 0 && <div style={{ fontSize: 9, color: C.accent, marginBottom: 2 }}>⭐ MÁS RENTABLE</div>}
+              <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "PROPIO" : "TERCERO " + v.owner_pct + "%"}</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{v.name}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 9, color: C.accent }}>Mi ganancia</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: C.accent }}>{fmt(v.ganancia)}</div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11, marginBottom: 6 }}>
+            <div><div style={{ color: C.muted }}>Días</div><div style={{ color: C.white, fontWeight: 600 }}>{v.dias}</div></div>
+            <div><div style={{ color: C.muted }}>Facturado</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(v.facturado)}</div></div>
+            <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(v.combustible)}</div></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
+            <div><div style={{ color: C.muted }}>Gastos mec.</div><div style={{ color: C.red }}>{fmt(v.gastosMec)}</div></div>
+            <div><div style={{ color: C.muted }}>Prom/día</div><div style={{ color: C.teal }}>{fmt(v.promFact)}</div></div>
+            <div><div style={{ color: C.muted }}>Gan/día</div><div style={{ color: C.accent }}>{fmt(v.promGan)}</div></div>
+          </div>
+        </div>
+      ))}
+
+      {/* Por chofer */}
+      <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10, marginTop: 8 }}>👤 Por chofer</div>
+      {dStats.length === 0 && <div style={{ textAlign: "center", padding: 20, color: C.muted, fontSize: 12, marginBottom: 16 }}>Sin registros</div>}
+      {dStats.map((d, i) => (
+        <div key={d.id} style={{ ...card, borderColor: i === 0 ? "#16a34a44" : C.border, padding: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <div>
+              {i === 0 && <div style={{ fontSize: 9, color: "#4ade80", marginBottom: 2 }}>⭐ MÁS GANANCIA</div>}
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{d.name}</div>
+              <div style={{ fontSize: 11, color: C.muted }}>{d.dias} días trabajados</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 9, color: "#4ade80" }}>Ganancia que dejó</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: "#4ade80" }}>{fmt(d.ganancia)}</div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11 }}>
+            <div><div style={{ color: C.muted }}>Facturado</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(d.facturado)}</div></div>
+            <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(d.combustible)}</div></div>
+            <div><div style={{ color: C.muted }}>Prom/día</div><div style={{ color: C.teal }}>{fmt(d.promFact)}</div></div>
+          </div>
+        </div>
+      ))}
+
+      <button onClick={generatePDF} style={{ ...btn(), marginTop: 8 }}>
+        📄 Generar PDF para imprimir
       </button>
     </div>
   );
