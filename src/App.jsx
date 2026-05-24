@@ -1550,7 +1550,7 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
               {editingRec?.id === r.id ? (
                 <RecordForm title={"Editando " + r.date} form={form} setForm={setForm} vehicles={vehicles} driverPct={editingRec.driver_pct} onSave={saveEditDay} onCancel={() => { setEditingRec(null); setForm(emptyForm); }} />
               ) : (
-                <div style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8, border: "1px solid " + (r.paid ? "#16a34a44" : C.border), opacity: r.paid ? 0.6 : 1 }}>
+                <div style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8, border: "1px solid " + (r.paid ? "#16a34a44" : C.border) }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
