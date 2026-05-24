@@ -29,13 +29,13 @@ const db = {
 };
 
 const uploadImg = async (file, path) => {
-  const res = await fetch(`${SUPA_URL}/storage/v1/object/comprobantes/${path}`, {
+  const res = await fetch(`${SUPA_URL}/storage/v1/object/Comprobantes/${path}`, {
     method: "POST",
     headers: { "apikey": SUPA_KEY, "Authorization": "Bearer " + SUPA_KEY, "Content-Type": file.type },
     body: file,
   });
   if (!res.ok) return null;
-  return `${SUPA_URL}/storage/v1/object/public/comprobantes/${path}`;
+  return `${SUPA_URL}/storage/v1/object/public/Comprobantes/${path}`;
 };
 
 const DEFAULT_VEHICLES = [
