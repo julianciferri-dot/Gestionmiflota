@@ -151,6 +151,68 @@ export default function App() {
 function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricRegistered, setBiometricRegistered] = useState(false);
+
+  useEffect(() => {
+    // Check if WebAuthn is available (Face ID / Touch ID)
+    if (window.PublicKeyCredential) {
+      PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then(available => {
+          setBiometricAvailable(available);
+          // Check if already registered
+          const stored = localStorage.getItem("flota_biometric");
+          if (stored === "registered") setBiometricRegistered(true);
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  const registerBiometric = async () => {
+    try {
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const cred = await navigator.credentials.create({
+        publicKey: {
+          challenge,
+          rp: { name: "Mi Flota", id: window.location.hostname },
+          user: { id: new Uint8Array([1]), name: "owner", displayName: "Dueño" },
+          pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+          authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+          timeout: 60000,
+        }
+      });
+      if (cred) {
+        localStorage.setItem("flota_biometric", "registered");
+        localStorage.setItem("flota_cred_id", btoa(String.fromCharCode(...new Uint8Array(cred.rawId))));
+        setBiometricRegistered(true);
+        onOwner();
+      }
+    } catch (e) {
+      setError("No se pudo registrar Face ID");
+    }
+  };
+
+  const loginBiometric = async () => {
+    try {
+      const challenge = new Uint8Array(32);
+      crypto.getRandomValues(challenge);
+      const credIdStr = localStorage.getItem("flota_cred_id");
+      const credIdBytes = credIdStr ? Uint8Array.from(atob(credIdStr), c => c.charCodeAt(0)) : null;
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge,
+          rpId: window.location.hostname,
+          userVerification: "required",
+          allowCredentials: credIdBytes ? [{ type: "public-key", id: credIdBytes }] : [],
+          timeout: 60000,
+        }
+      });
+      if (assertion) onOwner();
+    } catch (e) {
+      setError("Face ID no reconocido");
+    }
+  };
 
   const press = (d) => {
     if (d === "X") { setPin(p => p.slice(0, -1)); return; }
@@ -158,7 +220,18 @@ function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
     setPin(next);
     setError("");
     if (next.length === 4) {
-      if (next === ownerPin) { setPin(""); onOwner(); return; }
+      if (next === ownerPin) {
+        setPin("");
+        // Offer to register Face ID if available and not registered
+        if (biometricAvailable && !biometricRegistered) {
+          if (window.confirm("¿Querés activar Face ID para entrar más rápido la próxima vez?")) {
+            registerBiometric();
+            return;
+          }
+        }
+        onOwner();
+        return;
+      }
       const drv = drivers.find(dr => dr.pin === next);
       if (drv) { setPin(""); onDriver(drv); return; }
       setError("PIN incorrecto");
@@ -173,6 +246,14 @@ function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
         <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 30, fontWeight: 800, color: C.white }}>Mi Flota</div>
         <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>Ingresá tu PIN de 4 dígitos</div>
       </div>
+
+      {biometricAvailable && biometricRegistered && (
+        <button onClick={loginBiometric} style={{ background: C.hi, border: "1px solid " + C.accent + "44", borderRadius: 16, padding: "14px 28px", color: C.accent, fontSize: 28, cursor: "pointer", marginBottom: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+          <span>🔐</span>
+          <span style={{ fontSize: 12, fontFamily: "'DM Mono', monospace", letterSpacing: 1 }}>Entrar con Face ID</span>
+        </button>
+      )}
+
       <div style={{ display: "flex", gap: 16, marginBottom: 32 }}>
         {[0,1,2,3].map(i => <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid " + C.accent, background: i < pin.length ? C.accent : "transparent", transition: "all .15s" }} />)}
       </div>
@@ -186,6 +267,11 @@ function LoginScreen({ drivers, ownerPin, onDriver, onOwner }) {
         ))}
       </div>
       <div style={{ marginTop: 32, fontSize: 11, color: C.muted, letterSpacing: 1 }}>DUEÑO: usá tu PIN de administrador</div>
+      {biometricAvailable && biometricRegistered && (
+        <button onClick={() => { localStorage.removeItem("flota_biometric"); localStorage.removeItem("flota_cred_id"); setBiometricRegistered(false); }} style={{ marginTop: 16, background: "none", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+          Desactivar Face ID
+        </button>
+      )}
     </div>
   );
 }
