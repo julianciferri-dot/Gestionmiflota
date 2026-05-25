@@ -1370,6 +1370,56 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
       <button onClick={generatePDF} style={{ ...btn(), marginTop: 8 }}>
         📄 Generar PDF para imprimir
       </button>
+
+      {/* WhatsApp para dueños de autos terceros */}
+      {vStats.filter(v => v.type === "third").length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>📲 Resumen para dueños de autos</div>
+          {vStats.filter(v => v.type === "third").map(v => {
+            const ownerGain = v.gananciaBase; // 75% of ganancia bruta goes to owner
+            return (
+              <div key={v.id} style={{ ...card, padding: 14, marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: C.accent }}>🤝 TERCERO · {v.owner_pct}% tuyo</div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{v.name}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 9, color: "#4ade80" }}>Le corresponde</div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: "#4ade80" }}>{fmt(ownerGain)}</div>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11, marginBottom: 12 }}>
+                  <div><div style={{ color: C.muted }}>Días</div><div style={{ color: C.white, fontWeight: 600 }}>{v.dias}</div></div>
+                  <div><div style={{ color: C.muted }}>Facturado</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(v.facturado)}</div></div>
+                  <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(v.combustible)}</div></div>
+                </div>
+                <button onClick={() => {
+                  const lines = [
+                    "Hola! Te mando el resumen de tu auto 🚗",
+                    "",
+                    "📅 *" + periodLabel + "*",
+                    "🚘 *" + v.name + "*",
+                    "",
+                    "• Días trabajados: " + v.dias,
+                    "• Facturado total: " + fmt(v.facturado),
+                    "• Combustible: " + fmt(v.combustible),
+                    "• Neto: " + fmt(v.neto),
+                    "",
+                    "Tu parte (" + v.owner_pct + "%): *" + fmt(ownerGain) + "*",
+                    "",
+                    "Cualquier consulta avisame 👍",
+                  ];
+                  window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("
+")), "_blank");
+                }} style={{ width: "100%", background: "#25d366", border: "none", borderRadius: 12, padding: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                  📲 Enviar resumen por WhatsApp
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
