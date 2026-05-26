@@ -970,14 +970,12 @@ function PlanillaTab({ records, vehicles, drivers, weeks, dayoffs }) {
   const getVal = (r, key) => key === "mio" ? getMio(r) : Number(r[key]);
 
   const renderTable = (groupRecords, days, driverDayoffs = []) => {
-    // Calculate totals from ALL records in the group, not just visible days
-    const totals = { facturado: 0, combustible: 0, neto: 0, mio: 0 };
-    groupRecords.forEach(r => {
-      totals.facturado += Number(r.facturado);
-      totals.combustible += Number(r.combustible);
-      totals.neto += Number(r.neto);
-      totals.mio += getMio(r);
-    });
+    // Calculate totals from ALL records in the group
+    const tFact = groupRecords.reduce((a, r) => a + Number(r.facturado), 0);
+    const tComb = groupRecords.reduce((a, r) => a + Number(r.combustible), 0);
+    const tNeto = groupRecords.reduce((a, r) => a + Number(r.neto), 0);
+    const tMio = groupRecords.reduce((a, r) => a + getMio(r), 0);
+    const totals = { facturado: tFact, combustible: tComb, neto: tNeto, mio: tMio };
     return (
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
