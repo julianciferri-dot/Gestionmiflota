@@ -562,9 +562,10 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
   const sendReminder = () => {
     const yesterday = arDate(-1);
-    const withDayoff = drivers.filter(d => dayoffs.some(o => o.driver_id === d.id && o.date === yesterday));
-    const loaded = drivers.filter(d => records.some(r => r.driver_id === d.id && r.date === yesterday));
-    const missing = drivers.filter(d => !records.some(r => r.driver_id === d.id && r.date === yesterday) && !dayoffs.some(o => o.driver_id === d.id && o.date === yesterday));
+    const activeDrivers = drivers.filter(d => d.active !== false);
+    const withDayoff = activeDrivers.filter(d => dayoffs.some(o => o.driver_id === d.id && o.date === yesterday));
+    const loaded = activeDrivers.filter(d => records.some(r => r.driver_id === d.id && r.date === yesterday));
+    const missing = activeDrivers.filter(d => !records.some(r => r.driver_id === d.id && r.date === yesterday) && !dayoffs.some(o => o.driver_id === d.id && o.date === yesterday));
     const fechaStr = new Date(yesterday + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" });
     let msg = "📋 *Recordatorio - " + fechaStr + "*\n\n";
     if (missing.length === 0) msg += "✅ ¡Todos cargaron o tenían franco! Gracias.";
@@ -927,7 +928,7 @@ function DayoffCard({ drivers, dayoffs, toggleDayoff }) {
         <input type="date" value={dayoffDate} onChange={e => setDayoffDate(e.target.value)}
           style={{ background: "#0e1525", border: "1px solid #1e2d50", borderRadius: 10, padding: "12px 14px", color: "#e2e8f0", fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" }} />
       </div>
-      {drivers.map(d => {
+      {drivers.filter(d => d.active !== false).map(d => {
         const hasDayoff = dayoffs.some(o => o.driver_id === d.id && o.date === dayoffDate);
         return (
           <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #1e2d50" }}>
@@ -1545,8 +1546,20 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
   return (
     <div style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-        <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: C.white }}>{d.name}</div>
-        <button onClick={onDelete} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 22, cursor: "pointer" }}>×</button>
+        <div>
+          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: d.active === false ? C.muted : C.white }}>{d.name}</div>
+          {d.active === false && <div style={{ fontSize: 10, color: C.muted, letterSpacing: 1 }}>INACTIVO</div>}
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button onClick={async () => {
+            const newActive = d.active === false ? true : false;
+            await onUpdate({ active: newActive });
+            showToast(newActive ? "Chofer activado ✓" : "Chofer marcado inactivo");
+          }} style={{ background: d.active === false ? C.hi : "#16a34a22", border: "1px solid " + (d.active === false ? C.border : "#16a34a44"), borderRadius: 8, padding: "6px 12px", color: d.active === false ? C.muted : "#4ade80", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+            {d.active === false ? "Activar" : "✓ Activo"}
+          </button>
+          <button onClick={onDelete} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 22, cursor: "pointer" }}>×</button>
+        </div>
       </div>
       <div style={{ background: C.hi, borderRadius: 10, padding: 12, marginBottom: 10 }}>
         <div style={{ fontSize: 10, color: C.accent, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>% del chofer</div>
