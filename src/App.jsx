@@ -1654,7 +1654,7 @@ function Row({ label, val, bold, color }) {
       <span style={{ fontSize: 14, fontWeight: bold ? 700 : 400, color: color || C.text }}>{val}</span>
     </div>
   );
-}
+} 
 
 function ImgUpload({ preview, label, onChange }) {
   const ref = useRef();
