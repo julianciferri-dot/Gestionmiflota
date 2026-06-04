@@ -750,6 +750,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
         {tab === 1 && (
           <div>
+            <VehicleAddForm vehicles={vehicles} setVehicles={setVehicles} showToast={showToast} />
             {vStats.map(v => (
               <div key={v.id} style={card}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
@@ -1134,6 +1135,56 @@ function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filt
       <button onClick={() => whatsappDriver(d, mode === "day" ? selectedDay : null)} style={{ width: "100%", background: "#25d366", border: "none", borderRadius: 12, padding: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
         📲 Enviar resumen por WhatsApp
       </button>
+    </div>
+  );
+}
+
+function VehicleAddForm({ vehicles, setVehicles, showToast }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", type: "own", owner_pct: "100" });
+
+  const save = async () => {
+    if (!form.name.trim()) { showToast("Ingresá el nombre del vehículo"); return; }
+    const pct = form.type === "own" ? 100 : Math.min(100, Math.max(0, parseFloat(form.owner_pct) || 100));
+    const v = { id: "v" + Date.now(), name: form.name.trim(), type: form.type, owner_pct: pct };
+    try {
+      await db.insert("vehicles", v);
+      setVehicles(prev => [...prev, v]);
+      showToast("Vehículo agregado ✓");
+      setForm({ name: "", type: "own", owner_pct: "100" });
+      setOpen(false);
+    } catch { showToast("Error al guardar"); }
+  };
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      {!open ? (
+        <button onClick={() => setOpen(true)} style={{ ...btn(C.hi, C.teal), border: "1px solid " + C.teal + "44", fontSize: 13 }}>
+          + Agregar vehículo
+        </button>
+      ) : (
+        <div style={{ ...card, borderColor: C.teal + "44" }}>
+          <div style={{ fontSize: 10, color: C.teal, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Nuevo vehículo</div>
+          <label style={lbl}>Nombre (marca, modelo, patente)</label>
+          <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ej: Toyota Yaris AB123CD" style={{ ...inp, marginBottom: 10 }} />
+          <label style={lbl}>Tipo</label>
+          <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value, owner_pct: e.target.value === "own" ? "100" : "25" })} style={{ ...inp, marginBottom: 10 }}>
+            <option value="own">🚗 Propio (100%)</option>
+            <option value="third">🤝 Tercero</option>
+          </select>
+          {form.type === "third" && (
+            <>
+              <label style={lbl}>Tu porcentaje (%)</label>
+              <input type="number" min="1" max="99" value={form.owner_pct} onChange={e => setForm({ ...form, owner_pct: e.target.value })} placeholder="Ej: 25" style={{ ...inp, marginBottom: 6 }} />
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>El dueño del auto recibe el {100 - (parseFloat(form.owner_pct) || 0)}%</div>
+            </>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setOpen(false)} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>Cancelar</button>
+            <button onClick={save} style={{ ...btn(), flex: 2, fontSize: 13 }}>Guardar ✓</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
