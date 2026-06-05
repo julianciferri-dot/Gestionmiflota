@@ -1292,7 +1292,7 @@ function TurnosTab({ vehicles, drivers }) {
                         style={{ ...inp, fontSize: 12, padding: "8px", marginBottom: 6 }}>
                         <option value="" disabled>Elegí un chofer...</option>
                         <option value="__remove__">— Sin asignar</option>
-                        {drivers.filter(d => d.active !== false).map(d => (
+                        {drivers.filter(d => d.active !== false && !Object.entries(turnos).some(([k, val]) => val === d.id && k !== v.id + "_" + shift)).map(d => (
                           <option key={d.id} value={d.id}>{d.name}</option>
                         ))}
                       </select>
