@@ -729,7 +729,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                               </div>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-                              <button onClick={() => setSelectedRecord(r)} style={{ background: "#14b8a622", border: "1px solid #14b8a644", borderRadius: 6, padding: "4px 8px", color: "#14b8a6", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>📷 Fotos</button>
+                              <button onClick={(e) => { e.stopPropagation(); setSelectedRecord(r); }} style={{ background: "#14b8a622", border: "1px solid #14b8a644", borderRadius: 6, padding: "8px 12px", color: "#14b8a6", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📷 Fotos</button>
                               <button onClick={async () => {
                                 if (!window.confirm("¿Borrar este registro?")) return;
                                 try { await db.delete("records", r.id); setRecords(prev => prev.filter(x => x.id !== r.id)); }
