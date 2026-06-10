@@ -729,7 +729,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                               </div>
                             </div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
-                              <button onClick={() => setSelectedRecord(r)} style={{ background: "#14b8a622", border: "1px solid #14b8a644", borderRadius: 6, padding: "4px 8px", color: "#14b8a6", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>📷 Fotos</button>
+                              <button onClick={() => onViewPhotos(r)} style={{ background: "#14b8a622", border: "1px solid #14b8a644", borderRadius: 6, padding: "4px 8px", color: "#14b8a6", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>📷 Fotos</button>
                               <button onClick={async () => {
                                 if (!window.confirm("¿Borrar este registro?")) return;
                                 try { await db.delete("records", r.id); setRecords(prev => prev.filter(x => x.id !== r.id)); }
@@ -845,7 +845,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
             )}
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", margin: "20px 0 12px" }}>Editar choferes</div>
             {drivers.map(d => (
-              <DriverCard key={d.id} d={d} drivers={drivers} records={records} vehicles={vehicles} setRecords={setRecords} onUpdate={(changes) => updateDriver(d.id, changes)} onDelete={() => deleteDriver(d.id)} showToast={showToast} />
+              <DriverCard key={d.id} d={d} drivers={drivers} records={records} vehicles={vehicles} setRecords={setRecords} onUpdate={(changes) => updateDriver(d.id, changes)} onDelete={() => deleteDriver(d.id)} showToast={showToast} onViewPhotos={setSelectedRecord} />
             ))}
           </div>
         )}
@@ -1661,9 +1661,18 @@ function RecordForm({ form, setForm, onSave, onCancel, title, vehicles, driverPc
   );
 }
 
-function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDelete, showToast }) {
+function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDelete, showToast, onViewPhotos }) {
   const [pctVal, setPctVal] = useState(String(d.pct ?? 40));
   const [pinVal, setPinVal] = useState(d.pin);
+  const [nameVal, setNameVal] = useState(d.name);
+  const [editingName, setEditingName] = useState(false);
+
+  const saveName = async () => {
+    if (!nameVal.trim()) { showToast("El nombre no puede estar vacío"); return; }
+    await onUpdate({ name: nameVal.trim() });
+    showToast("Nombre actualizado ✓");
+    setEditingName(false);
+  };
   const [showRecords, setShowRecords] = useState(false);
   const [showAddDay, setShowAddDay] = useState(false);
   const [editingRec, setEditingRec] = useState(null);
@@ -1737,8 +1746,19 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
   return (
     <div style={{ ...card, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-        <div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: d.active === false ? C.muted : C.white }}>{d.name}</div>
+        <div style={{ flex: 1, marginRight: 8 }}>
+          {editingName ? (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input value={nameVal} onChange={e => setNameVal(e.target.value)} style={{ ...inp, fontSize: 14, fontWeight: 700, padding: "6px 10px", flex: 1 }} />
+              <button onClick={saveName} style={{ background: C.accent, border: "none", borderRadius: 8, padding: "6px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✓</button>
+              <button onClick={() => { setEditingName(false); setNameVal(d.name); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer" }}>×</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 15, fontWeight: 700, color: d.active === false ? C.muted : C.white }}>{d.name}</div>
+              <button onClick={() => setEditingName(true)} style={{ background: "none", border: "none", color: C.accent + "88", fontSize: 14, cursor: "pointer" }}>✏️</button>
+            </div>
+          )}
           {d.active === false && <div style={{ fontSize: 10, color: C.muted, letterSpacing: 1 }}>INACTIVO</div>}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
