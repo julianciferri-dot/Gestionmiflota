@@ -319,7 +319,16 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
     else { setFuelPreview(url); setFuelFile(file); }
   };
 
+  const [submitting, setSubmitting] = useState(false);
+
   const submit = async () => {
+    if (submitting) return;
+    // Check for duplicate
+    const alreadyExists = records.some(r => r.driver_id === driver.id && r.date === selectedDate);
+    if (alreadyExists) {
+      if (!window.confirm("Ya existe un registro para esta fecha. ¿Querés agregar otro igualmente?")) return;
+    }
+    setSubmitting(true);
     const recId = Date.now().toString();
     let uberImgUrl = null, fuelImgUrl = null;
     try {
@@ -342,6 +351,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular(""); setSelectedDate(arDate());
       setUberPreview(""); setFuelPreview(""); setUberFile(null); setFuelFile(null);
     } catch { showToast("Error al guardar. Intentá de nuevo."); }
+    setSubmitting(false);
   };
 
   return (
@@ -463,7 +473,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setScreen("form")} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border }}>← Editar</button>
-              <button onClick={submit} style={{ ...btn(), flex: 2 }}>Enviar al dueño ✓</button>
+              <button onClick={submit} disabled={submitting} style={{ ...btn(), flex: 2, opacity: submitting ? 0.6 : 1 }}>{submitting ? "Enviando..." : "Enviar al dueño ✓"}</button>
             </div>
           </div>
         )}
