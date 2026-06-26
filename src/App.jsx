@@ -493,6 +493,13 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   const [newDrv, setNewDrv] = useState({ name: "", pin: "", vehicle_id: "", pct: "40" });
   const [newOwnerPin, setNewOwnerPin] = useState(ownerPin);
   const [newExpense, setNewExpense] = useState({ vehicle_id: "", category: "mecanico", description: "", amount: "", date: arDate() });
+  const [desktopMode, setDesktopMode] = useState(() => localStorage.getItem("flota_desktop") === "1");
+
+  const toggleDesktop = () => {
+    const next = !desktopMode;
+    setDesktopMode(next);
+    localStorage.setItem("flota_desktop", next ? "1" : "0");
+  };
   const [selectedRecord, setSelectedRecord] = useState(null);
 
   const weeks = [...new Set(records.map(r => r.week))].sort().reverse();
@@ -620,28 +627,60 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
   const catLabel = (c) => ({ mecanico: "🔧 Mecánico", repuesto: "⚙️ Repuesto", manoobra: "👷 Mano de obra", otro: "📦 Otro" })[c] || c;
 
+  const tabIcons = ["📊","🚗","👤","📋","💸","📈","🔀","⚙️"];
+
   return (
     <>
-    <div style={{ minHeight: "100vh" }}>
-      <div style={{ background: C.surface, borderBottom: "1px solid " + C.border, padding: "16px 20px 0" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>Panel del dueño</div>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: C.white }}>Mi Flota</div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={reload} style={{ background: C.hi, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.teal, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>↻</button>
-            <button onClick={onBack} style={{ background: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
-          </div>
-        </div>
-        <div style={{ display: "flex", overflowX: "auto" }}>
-          {TABS.map((t, i) => (
-            <button key={i} onClick={() => setTab(i)} style={{ flex: "0 0 auto", background: "none", border: "none", borderBottom: "2px solid " + (tab === i ? C.accent : "transparent"), color: tab === i ? C.accent : C.muted, padding: "10px 14px", fontSize: 12, fontWeight: tab === i ? 700 : 400, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t}</button>
-          ))}
-        </div>
-      </div>
+    <div style={{ minHeight: "100vh", display: desktopMode ? "flex" : "block", width: desktopMode ? "100vw" : "100%" }}>
 
-      <div style={{ padding: 20 }}>
+      {/* SIDEBAR — solo en modo escritorio */}
+      {desktopMode && (
+        <div style={{ width: 240, background: C.surface, borderRight: "1px solid " + C.border, display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
+          <div style={{ padding: "24px 16px 16px" }}>
+            <div style={{ fontSize: 9, color: C.accent, letterSpacing: 3, textTransform: "uppercase", marginBottom: 4 }}>Panel del dueño</div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: C.white, marginBottom: 20 }}>Mi Flota</div>
+            {TABS.map((t, i) => (
+              <button key={i} onClick={() => setTab(i)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", background: tab === i ? C.hi : "none", border: "none", borderLeft: "3px solid " + (tab === i ? C.accent : "transparent"), borderRadius: "0 8px 8px 0", padding: "10px 14px", color: tab === i ? C.accent : C.muted, fontSize: 13, fontWeight: tab === i ? 700 : 400, cursor: "pointer", fontFamily: "inherit", textAlign: "left", marginBottom: 2 }}>
+                <span>{tabIcons[i]}</span> {t}
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: "auto", padding: "14px 16px", borderTop: "1px solid " + C.border, display: "flex", flexDirection: "column", gap: 8 }}>
+            <button onClick={toggleDesktop} style={{ background: C.accent + "22", border: "1px solid " + C.accent + "44", borderRadius: 8, padding: "8px", color: C.accent, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>📱 Modo celular</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={reload} style={{ flex: 1, background: C.hi, border: "1px solid " + C.border, borderRadius: 8, padding: "8px", color: C.teal, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>↻</button>
+              <button onClick={onBack} style={{ flex: 1, background: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "8px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONTENIDO PRINCIPAL */}
+      <div style={{ flex: 1, minHeight: "100vh", overflowY: desktopMode ? "auto" : "unset" }}>
+
+      {/* TOPBAR — solo en modo celular */}
+      {!desktopMode && (
+        <div style={{ background: C.surface, borderBottom: "1px solid " + C.border, padding: "16px 20px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>Panel del dueño</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, color: C.white }}>Mi Flota</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={toggleDesktop} style={{ background: C.hi, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>🖥️</button>
+              <button onClick={reload} style={{ background: C.hi, border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.teal, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>↻</button>
+              <button onClick={onBack} style={{ background: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "8px 12px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
+            </div>
+          </div>
+          <div style={{ display: "flex", overflowX: "auto" }}>
+            {TABS.map((t, i) => (
+              <button key={i} onClick={() => setTab(i)} style={{ flex: "0 0 auto", background: "none", border: "none", borderBottom: "2px solid " + (tab === i ? C.accent : "transparent"), color: tab === i ? C.accent : C.muted, padding: "10px 14px", fontSize: 12, fontWeight: tab === i ? 700 : 400, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>{t}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: 20, maxWidth: desktopMode ? 860 : "100%", margin: desktopMode ? "0 auto" : 0 }}>
         {tab < 3 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -931,6 +970,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
     {selectedRecord && <PhotoModal record={selectedRecord} dName={dName} vName={vName} onClose={() => setSelectedRecord(null)} />}
