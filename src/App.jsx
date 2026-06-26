@@ -620,34 +620,10 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
   const catLabel = (c) => ({ mecanico: "🔧 Mecánico", repuesto: "⚙️ Repuesto", manoobra: "👷 Mano de obra", otro: "📦 Otro" })[c] || c;
 
-  const tabIcons = ["📊","🚗","👤","📋","💸","📈","🔀","⚙️"];
-
   return (
     <>
-    <div style={{ minHeight: "100vh", display: "flex" }}>
-
-      {/* SIDEBAR — desktop only */}
-      <div className="owner-sidebar" style={{ width: 260, background: C.surface, borderRight: "1px solid " + C.border, flexDirection: "column", height: "100vh", position: "sticky", top: 0, flexShrink: 0 }}>
-        <div style={{ padding: "28px 20px 20px" }}>
-          <div style={{ fontSize: 9, color: C.accent, letterSpacing: 3, textTransform: "uppercase", marginBottom: 4 }}>Panel del dueño</div>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 26, fontWeight: 800, color: C.white, marginBottom: 24 }}>Mi Flota</div>
-          {TABS.map((t, i) => (
-            <button key={i} onClick={() => setTab(i)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", background: tab === i ? C.hi : "none", border: "none", borderLeft: "3px solid " + (tab === i ? C.accent : "transparent"), borderRadius: tab === i ? "0 10px 10px 0" : 0, padding: "11px 16px", color: tab === i ? C.accent : C.muted, fontSize: 13, fontWeight: tab === i ? 700 : 400, cursor: "pointer", fontFamily: "inherit", textAlign: "left", marginBottom: 2 }}>
-              <span style={{ fontSize: 16 }}>{tabIcons[i]}</span> {t}
-            </button>
-          ))}
-        </div>
-        <div style={{ marginTop: "auto", padding: "16px 20px", borderTop: "1px solid " + C.border, display: "flex", gap: 8 }}>
-          <button onClick={reload} style={{ flex: 1, background: C.hi, border: "1px solid " + C.border, borderRadius: 8, padding: "8px", color: C.teal, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>↻ Sync</button>
-          <button onClick={onBack} style={{ flex: 1, background: "none", border: "1px solid " + C.border, borderRadius: 8, padding: "8px", color: C.muted, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Salir</button>
-        </div>
-      </div>
-
-      {/* MAIN CONTENT */}
-      <div className="owner-content" style={{ flex: 1, minHeight: "100vh", overflowY: "auto" }}>
-
-      {/* TOPBAR — mobile only */}
-      <div className="owner-topbar" style={{ background: C.surface, borderBottom: "1px solid " + C.border, padding: "16px 20px 0" }}>
+    <div style={{ minHeight: "100vh" }}>
+      <div style={{ background: C.surface, borderBottom: "1px solid " + C.border, padding: "16px 20px 0" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase" }}>Panel del dueño</div>
@@ -665,7 +641,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         </div>
       </div>
 
-      <div className="owner-main" style={{ padding: 20 }}>
+      <div style={{ padding: 20 }}>
         {tab < 3 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -955,7 +931,6 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
             </div>
           </div>
         )}
-      </div>
       </div>
     </div>
     {selectedRecord && <PhotoModal record={selectedRecord} dName={dName} vName={vName} onClose={() => setSelectedRecord(null)} />}
