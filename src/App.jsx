@@ -341,7 +341,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       uber: parseAmt(uberAmt), particular: parseAmt(particular),
       facturado: total, combustible: fuel, neto, ganancia: ownerCut, chofer: driverCut,
       driver_pct: driver.pct ?? 40,
-      uber_img: uberImgUrl, fuel_img: fuelImgUrl, paid: false,
+      uber_img: uberImgUrl, fuel_img: fuelImgUrl, paid: false, partial_payment: null,
     };
     try {
       await db.insert("records", rec);
@@ -539,7 +539,12 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   // Pending payment per driver
   const pendingByDriver = drivers.map(d => {
     const unpaid = filtered.filter(r => r.driver_id === d.id && !r.paid);
-    return { id: d.id, name: d.name, pending: unpaid.reduce((a, r) => a + Number(r.ganancia), 0), dias: unpaid.length };
+    const pending = unpaid.reduce((a, r) => {
+      const total = Number(r.ganancia);
+      const paid = Number(r.partial_payment) || 0;
+      return a + (total - paid);
+    }, 0);
+    return { id: d.id, name: d.name, pending, dias: unpaid.length };
   }).filter(d => d.pending > 0);
   const totalPending = pendingByDriver.reduce((a, d) => a + d.pending, 0);
 
@@ -1123,6 +1128,66 @@ function PhotoModal({ record, dName, vName, onClose }) {
         ? <img src={record.fuel_img} alt="Combustible" style={{ width: "100%", borderRadius: 12, marginBottom: 16, border: "1px solid #1e2d50" }} />
         : <div style={{ background: "#0e1525", borderRadius: 12, padding: 30, textAlign: "center", color: "#64748b", fontSize: 13, marginBottom: 16, border: "1px solid #1e2d50" }}>Sin imagen cargada</div>
       }
+    </div>
+  );
+}
+
+function PaidButtons({ r, setRecords, showToast }) {
+  const [showPartial, setShowPartial] = useState(false);
+  const [partialAmt, setPartialAmt] = useState("");
+
+  const pending = r.paid ? 0 : r.partial_payment != null
+    ? Number(r.ganancia) - Number(r.partial_payment)
+    : Number(r.ganancia);
+
+  const savePartial = async () => {
+    const amt = parseFloat(partialAmt.replace(/\./g, "").replace(",", ".")) || 0;
+    if (amt <= 0) { showToast("Ingresá un monto válido"); return; }
+    if (amt >= Number(r.ganancia)) { showToast("Ese monto es el total — usá Pagado completo"); return; }
+    try {
+      await db.update("records", r.id, { partial_payment: amt, paid: false });
+      setRecords(prev => prev.map(x => x.id === r.id ? { ...x, partial_payment: amt, paid: false } : x));
+      showToast("Pago parcial registrado ✓");
+      setShowPartial(false);
+      setPartialAmt("");
+    } catch { showToast("Error al actualizar"); }
+  };
+
+  const togglePaid = async () => {
+    const newPaid = !r.paid;
+    try {
+      await db.update("records", r.id, { paid: newPaid, partial_payment: newPaid ? null : r.partial_payment });
+      setRecords(prev => prev.map(x => x.id === r.id ? { ...x, paid: newPaid, partial_payment: newPaid ? null : x.partial_payment } : x));
+      showToast(newPaid ? "Marcado como pagado ✓" : "Marcado como pendiente");
+    } catch { showToast("Error al actualizar"); }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <button onClick={togglePaid} style={{ background: r.paid ? "#16a34a33" : "#f59e0b22", border: "1px solid " + (r.paid ? "#16a34a66" : "#f59e0b44"), borderRadius: 8, padding: "5px 10px", color: r.paid ? "#4ade80" : C.accent, fontSize: 11, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+        {r.paid ? "✓ Pagado" : "$ Pendiente"}
+      </button>
+      {!r.paid && (
+        <button onClick={() => setShowPartial(!showPartial)} style={{ background: "#60a5fa22", border: "1px solid #60a5fa44", borderRadius: 8, padding: "5px 10px", color: "#60a5fa", fontSize: 11, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
+          {r.partial_payment ? "Parcial: " + fmt(r.partial_payment) : "Pago parcial"}
+        </button>
+      )}
+      {showPartial && (
+        <div style={{ background: C.bg, borderRadius: 8, padding: 8, border: "1px solid #60a5fa44" }}>
+          {r.partial_payment && (
+            <div style={{ fontSize: 10, color: "#60a5fa", marginBottom: 4 }}>
+              Pagado: {fmt(r.partial_payment)} · Debe: {fmt(Number(r.ganancia) - Number(r.partial_payment))}
+            </div>
+          )}
+          <input type="text" inputMode="numeric" value={partialAmt}
+            onChange={e => { const v = e.target.value.replace(/\D/g,""); setPartialAmt(v ? Number(v).toLocaleString("es-AR") : ""); }}
+            placeholder="Monto pagado..." style={{ ...inp, fontSize: 12, padding: "6px 8px", marginBottom: 6 }} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setShowPartial(false)} style={{ flex: 1, background: C.hi, border: "none", borderRadius: 6, padding: "6px", color: C.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+            <button onClick={savePartial} style={{ flex: 2, background: "#60a5fa", border: "none", borderRadius: 6, padding: "6px", color: "#000", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>Guardar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
