@@ -958,9 +958,8 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
       </div>
       </div>
     </div>
-    </div>
     {selectedRecord && <PhotoModal record={selectedRecord} dName={dName} vName={vName} onClose={() => setSelectedRecord(null)} />}
-    </>
+  </>
   );
 }
 
