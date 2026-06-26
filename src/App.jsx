@@ -1938,16 +1938,7 @@ function DriverCard({ d, drivers, records, vehicles, setRecords, onUpdate, onDel
                       </div>
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, marginLeft: 8 }}>
-                      <button onClick={async () => {
-                        const newPaid = !r.paid;
-                        try {
-                          await db.update("records", r.id, { paid: newPaid });
-                          setRecords(prev => prev.map(x => x.id === r.id ? { ...x, paid: newPaid } : x));
-                          showToast(newPaid ? "Marcado como pagado ✓" : "Marcado como pendiente");
-                        } catch { showToast("Error al actualizar"); }
-                      }} style={{ background: r.paid ? "#16a34a33" : "#f59e0b22", border: "1px solid " + (r.paid ? "#16a34a66" : "#f59e0b44"), borderRadius: 8, padding: "5px 10px", color: r.paid ? "#4ade80" : C.accent, fontSize: 11, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
-                        {r.paid ? "✓ Pagado" : "$ Pendiente"}
-                      </button>
+                      <PaidButtons r={r} setRecords={setRecords} showToast={showToast} />
                       <button onClick={() => startEdit(r)} style={{ background: C.accent + "22", border: "1px solid " + C.accent + "44", borderRadius: 8, padding: "5px 10px", color: C.accent, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏️ Editar</button>
                     </div>
                   </div>
