@@ -1460,8 +1460,7 @@ function TurnosTab({ vehicles, drivers }) {
           lines.push("");
         }
         lines.push("Turnos vacíos: " + emptySlots + " · Cubiertos: " + assignedSlots);
-        window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("
-")), "_blank");
+        window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
       }} style={{ ...btn("#25d366", "#fff"), fontSize: 13, marginTop: 8 }}>
         📲 Compartir turnos por WhatsApp
       </button>
