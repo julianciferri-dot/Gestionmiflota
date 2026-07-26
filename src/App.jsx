@@ -575,6 +575,11 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   };
 
   const deleteExpense = async (id) => { await db.delete("expenses", id); setExpenses(prev => prev.filter(e => e.id !== id)); };
+  const deleteVehicle = async (id) => {
+    if (!window.confirm("¿Borrar este vehículo? Los registros históricos no se eliminarán.")) return;
+    try { await db.delete("vehicles", id); setVehicles(prev => prev.filter(v => v.id !== id)); showToast("Vehículo eliminado"); }
+    catch { showToast("Error al eliminar"); }
+  };
 
   const toggleDayoff = async (driverId, dateStr) => {
     const existing = dayoffs.find(o => o.driver_id === driverId && o.date === dateStr);
@@ -812,9 +817,12 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                     <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent, marginBottom: 2 }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO · " + v.owner_pct + "% tuyo"}</div>
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white }}>{v.name}</div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 10, color: C.accent }}>Mi ganancia</div>
-                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: C.accent }}>{fmt(v.gananciaReal)}</div>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 10, color: C.accent }}>Mi ganancia</div>
+                      <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 700, color: C.accent }}>{fmt(v.gananciaReal)}</div>
+                    </div>
+                    <button onClick={() => deleteVehicle(v.id)} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 22, cursor: "pointer", flexShrink: 0 }}>×</button>
                   </div>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
