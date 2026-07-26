@@ -1444,6 +1444,28 @@ function TurnosTab({ vehicles, drivers }) {
         </div>
       ))}
 
+      <button onClick={() => {
+        const lines = ["🚗 *Resumen de turnos*", ""];
+        vehicles.forEach(v => {
+          const dia = getDriver(v.id, "dia");
+          const noche = getDriver(v.id, "noche");
+          lines.push("*" + v.name + "*");
+          lines.push("☀️ Día: " + (dia ? dia.name : "— VACÍO"));
+          lines.push("🌙 Noche: " + (noche ? noche.name : "— VACÍO"));
+          lines.push("");
+        });
+        if (freeDrivers.length > 0) {
+          lines.push("👤 *Sin turno asignado:*");
+          freeDrivers.forEach(d => lines.push("• " + d.name));
+          lines.push("");
+        }
+        lines.push("Turnos vacíos: " + emptySlots + " · Cubiertos: " + assignedSlots);
+        window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("
+")), "_blank");
+      }} style={{ ...btn("#25d366", "#fff"), fontSize: 13, marginTop: 8 }}>
+        📲 Compartir turnos por WhatsApp
+      </button>
+
       <button onClick={() => { saveTurnos({}); }} style={{ ...btn(C.hi, C.muted), border: "1px solid " + C.border, fontSize: 13, marginTop: 8 }}>
         🗑️ Limpiar todos los turnos
       </button>
