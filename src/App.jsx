@@ -93,6 +93,8 @@ export default function App() {
   const [records, setRecords] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [dayoffs, setDayoffs] = useState([]);
+  const [maintenance, setMaintenance] = useState([]);
+  const [vehicleKm, setVehicleKm] = useState([]);
   const [ownerPin, setOwnerPinState] = useState(getOwnerPin());
   const [view, setView] = useState("login");
   const [currentDriver, setCurrentDriver] = useState(null);
@@ -104,12 +106,14 @@ export default function App() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [d, v, r, e, o] = await Promise.all([
+      const [d, v, r, e, o, m, vk] = await Promise.all([
         db.get("drivers").catch(() => []),
         db.get("vehicles").catch(() => []),
         db.get("records").catch(() => []),
         db.get("expenses").catch(() => []),
         db.get("dayoffs").catch(() => []),
+        db.get("maintenance").catch(() => []),
+        db.get("vehicle_km").catch(() => []),
       ]);
       setDrivers(d || []);
       if (!v || v.length === 0) {
@@ -119,6 +123,8 @@ export default function App() {
       setRecords(r || []);
       setExpenses(e || []);
       setDayoffs(o || []);
+      setMaintenance(m || []);
+      setVehicleKm(vk || []);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -142,7 +148,7 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
       {view === "login" && <LoginScreen drivers={drivers} ownerPin={ownerPin} onDriver={(d) => { setCurrentDriver(d); setView("driver"); }} onOwner={() => setView("owner")} />}
       {view === "driver" && <DriverScreen driver={currentDriver} vehicles={vehicles} records={records} dayoffs={dayoffs} setDayoffs={setDayoffs} setRecords={setRecords} showToast={showToast} onBack={() => setView("login")} vName={vName} />}
-      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} setDrivers={setDrivers} setVehicles={setVehicles} setRecords={setRecords} setExpenses={setExpenses} setDayoffs={setDayoffs} ownerPin={ownerPin} saveOwnerPin={setOwnerPinState} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} reload={loadAll} />}
+      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} setDrivers={setDrivers} setVehicles={setVehicles} setRecords={setRecords} setExpenses={setExpenses} setDayoffs={setDayoffs} ownerPin={ownerPin} saveOwnerPin={setOwnerPinState} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} reload={loadAll} maintenance={maintenance} setMaintenance={setMaintenance} vehicleKm={vehicleKm} setVehicleKm={setVehicleKm} />}
       {toast && <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", background: C.accent, color: "#000", padding: "12px 24px", borderRadius: 100, fontSize: 14, fontWeight: 700, zIndex: 999, whiteSpace: "nowrap" }}>{toast}</div>}
     </div>
   );
@@ -286,6 +292,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   const [fuelPreview, setFuelPreview] = useState("");
   const [uberFile, setUberFile] = useState(null);
   const [fuelFile, setFuelFile] = useState(null);
+  const [kmActual, setKmActual] = useState("");
   const [selectedDate, setSelectedDate] = useState(arDate());
 
   const myRecords = records.filter(r => r.driver_id === driver.id).sort((a, b) => b.date.localeCompare(a.date));
@@ -342,6 +349,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       facturado: total, combustible: fuel, neto, ganancia: ownerCut, chofer: driverCut,
       driver_pct: driver.pct ?? 40,
       uber_img: uberImgUrl, fuel_img: fuelImgUrl, paid: false, partial_payment: null,
+      km: kmActual ? parseInt(kmActual) : null,
     };
     try {
       await db.insert("records", rec);
@@ -349,7 +357,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
       showToast("Enviado al dueño ✓");
       setScreen("form");
       setVehicleId(""); setUberAmt(""); setFuelAmt(""); setParticular(""); setSelectedDate(arDate());
-      setUberPreview(""); setFuelPreview(""); setUberFile(null); setFuelFile(null);
+      setUberPreview(""); setFuelPreview(""); setUberFile(null); setFuelFile(null); setKmActual("");
     } catch { showToast("Error al guardar. Intentá de nuevo."); }
     setSubmitting(false);
   };
@@ -440,6 +448,11 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
               const raw = e.target.value.replace(/\D/g, "");
               setParticular(raw ? Number(raw).toLocaleString("es-AR") : "");
             }} placeholder="0" style={{ ...inp, marginBottom: 16 }} />
+            <label style={lbl}>🔢 Kilómetros actuales del auto</label>
+            <input type="text" inputMode="numeric" value={kmActual} onChange={e => {
+              const raw = e.target.value.replace(/\D/g, "");
+              setKmActual(raw);
+            }} placeholder="Ej: 45230" style={{ ...inp, marginBottom: 16 }} />
             <label style={lbl}>⛽ Ticket de combustible</label>
             <ImgUpload preview={fuelPreview} label="Subir foto del ticket" onChange={f => handleImg(f, "fuel")} />
             <label style={lbl}>Monto combustible $</label>
@@ -482,8 +495,8 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   );
 }
 
-function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload }) {
-  const TABS = ["Dashboard", "Vehículos", "Choferes", "Planilla", "Gastos", "Resumen", "Turnos", "Config"];
+function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload, maintenance, setMaintenance, vehicleKm, setVehicleKm }) {
+  const TABS = ["Dashboard", "Vehículos", "Choferes", "Planilla", "Mantenimiento", "Gastos", "Resumen", "Turnos", "Config"];
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState("dia");
   const [filterDay, setFilterDay] = useState(arDate());
@@ -686,7 +699,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
       )}
 
       <div style={{ padding: 20, maxWidth: desktopMode ? 860 : "100%", margin: desktopMode ? "0 auto" : 0 }}>
-        {tab < 3 && (
+        {tab < 4 && (
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               {["dia","semana","mes"].map((p, i) => (
@@ -917,6 +930,10 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         )}
 
         {tab === 4 && (
+          <MantenimientoTab vehicles={vehicles} maintenance={maintenance} setMaintenance={setMaintenance} records={records} showToast={showToast} />
+        )}
+
+        {tab === 5 && (
           <div>
             <div style={card}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Registrar gasto</div>
@@ -960,15 +977,15 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
           </div>
         )}
 
-        {tab === 5 && (
+        {tab === 6 && (
           <ResumeTab records={records} vehicles={vehicles} drivers={drivers} expenses={expenses} weeks={weeks} months={months} />
         )}
 
-        {tab === 6 && (
+        {tab === 7 && (
           <TurnosTab vehicles={vehicles} drivers={drivers} />
         )}
 
-        {tab === 7 && (
+        {tab === 8 && (
           <div>
             <div style={card}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Tu PIN de dueño</div>
@@ -1258,6 +1275,205 @@ function WhatsAppBtn({ d, records, filtered, period, filterDay, filterWeek, filt
       <button onClick={() => whatsappDriver(d, mode === "day" ? selectedDay : null)} style={{ width: "100%", background: "#25d366", border: "none", borderRadius: 12, padding: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
         📲 Enviar resumen por WhatsApp
       </button>
+    </div>
+  );
+}
+
+function MantenimientoTab({ vehicles, maintenance, setMaintenance, records, showToast }) {
+  const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [newItem, setNewItem] = useState({ name: "", interval_km: "", last_service_km: "", last_service_date: arDate(), notes: "" });
+
+  // Get latest km for each vehicle from records
+  const getLatestKm = (vehicleId) => {
+    const vRecs = records.filter(r => r.vehicle_id === vehicleId && r.km).sort((a, b) => b.date.localeCompare(a.date));
+    return vRecs.length > 0 ? vRecs[0].km : null;
+  };
+
+  const getItemStatus = (item, currentKm) => {
+    if (!currentKm || !item.last_service_km || !item.interval_km) return "sin-datos";
+    const kmSince = currentKm - item.last_service_km;
+    const pct = kmSince / item.interval_km;
+    if (pct >= 1) return "vencido";
+    if (pct >= 0.85) return "proximo";
+    return "ok";
+  };
+
+  const statusColor = { ok: "#4ade80", proximo: "#f59e0b", vencido: "#f43f5e", "sin-datos": "#64748b" };
+  const statusLabel = { ok: "✓ OK", proximo: "⚠️ Próximo", vencido: "🔴 Vencido", "sin-datos": "Sin datos" };
+
+  const addItem = async () => {
+    if (!newItem.name.trim() || !selectedVehicle) { showToast("Completá los campos"); return; }
+    const item = { id: Date.now().toString(), vehicle_id: selectedVehicle, ...newItem, interval_km: parseInt(newItem.interval_km) || null, last_service_km: parseInt(newItem.last_service_km) || null };
+    try {
+      await db.insert("maintenance", item);
+      setMaintenance(prev => [...prev, item]);
+      setNewItem({ name: "", interval_km: "", last_service_km: "", last_service_date: arDate(), notes: "" });
+      setShowAddItem(false);
+      showToast("Item agregado ✓");
+    } catch { showToast("Error al guardar"); }
+  };
+
+  const updateItem = async (id, changes) => {
+    await db.update("maintenance", id, changes);
+    setMaintenance(prev => prev.map(m => m.id === id ? { ...m, ...changes } : m));
+    showToast("Actualizado ✓");
+  };
+
+  const deleteItem = async (id) => {
+    await db.delete("maintenance", id);
+    setMaintenance(prev => prev.filter(m => m.id !== id));
+  };
+
+  // Summary — vehicles with alerts
+  const alerts = vehicles.map(v => {
+    const km = getLatestKm(v.id);
+    const items = maintenance.filter(m => m.vehicle_id === v.id);
+    const vencidos = items.filter(m => getItemStatus(m, km) === "vencido").length;
+    const proximos = items.filter(m => getItemStatus(m, km) === "proximo").length;
+    return { ...v, km, items, vencidos, proximos };
+  });
+
+  const totalVencidos = alerts.reduce((a, v) => a + v.vencidos, 0);
+  const totalProximos = alerts.reduce((a, v) => a + v.proximos, 0);
+
+  return (
+    <div>
+      {/* Summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+        <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid #f43f5e44", textAlign: "center" }}>
+          <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Vencidos</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#f43f5e", fontFamily: "'Syne', sans-serif" }}>{totalVencidos}</div>
+        </div>
+        <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid #f59e0b44", textAlign: "center" }}>
+          <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Próximos</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#f59e0b", fontFamily: "'Syne', sans-serif" }}>{totalProximos}</div>
+        </div>
+        <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid #4ade8044", textAlign: "center" }}>
+          <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Al día</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#4ade80", fontFamily: "'Syne', sans-serif" }}>{alerts.reduce((a, v) => a + v.items.filter(m => getItemStatus(m, v.km) === "ok").length, 0)}</div>
+        </div>
+      </div>
+
+      {/* Vehicle list */}
+      {alerts.map(v => (
+        <div key={v.id} style={{ ...card, marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO"}</div>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white }}>{v.name}</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                {v.km ? "📍 " + v.km.toLocaleString("es-AR") + " km actuales" : "Sin km registrados"}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {v.vencidos > 0 && <span style={{ background: "#f43f5e22", color: "#f43f5e", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 100 }}>{v.vencidos} vencido{v.vencidos > 1 ? "s" : ""}</span>}
+              {v.proximos > 0 && <span style={{ background: "#f59e0b22", color: "#f59e0b", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 100 }}>{v.proximos} próximo{v.proximos > 1 ? "s" : ""}</span>}
+            </div>
+          </div>
+
+          {/* Maintenance items */}
+          {v.items.map(item => {
+            const status = getItemStatus(item, v.km);
+            const color = statusColor[status];
+            const kmSince = v.km && item.last_service_km ? v.km - item.last_service_km : null;
+            const kmLeft = item.interval_km && kmSince !== null ? item.interval_km - kmSince : null;
+            return (
+              <MaintenanceItemRow key={item.id} item={item} status={status} color={color} label={statusLabel[status]} kmSince={kmSince} kmLeft={kmLeft} onUpdate={updateItem} onDelete={deleteItem} showToast={showToast} />
+            );
+          })}
+
+          {v.items.length === 0 && (
+            <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "10px 0" }}>Sin items de mantenimiento</div>
+          )}
+
+          <button onClick={() => { setSelectedVehicle(v.id); setShowAddItem(true); }} style={{ ...btn(C.hi, C.teal), border: "1px solid " + C.teal + "44", fontSize: 12, marginTop: 10 }}>
+            + Agregar mantenimiento
+          </button>
+        </div>
+      ))}
+
+      {/* Add item modal */}
+      {showAddItem && selectedVehicle && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 1000, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+          <div style={{ background: C.surface, borderRadius: "20px 20px 0 0", padding: 20, maxHeight: "80vh", overflowY: "auto" }}>
+            <div style={{ fontSize: 11, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 16 }}>
+              Nuevo item · {vehicles.find(v => v.id === selectedVehicle)?.name}
+            </div>
+            <label style={lbl}>Nombre del mantenimiento</label>
+            <input value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="Ej: Cambio de aceite y filtros" style={{ ...inp, marginBottom: 10 }} />
+            <label style={lbl}>Cada cuántos km</label>
+            <input type="number" value={newItem.interval_km} onChange={e => setNewItem({ ...newItem, interval_km: e.target.value })} placeholder="Ej: 10000" style={{ ...inp, marginBottom: 10 }} />
+            <label style={lbl}>Km del último service</label>
+            <input type="number" value={newItem.last_service_km} onChange={e => setNewItem({ ...newItem, last_service_km: e.target.value })} placeholder="Ej: 40000" style={{ ...inp, marginBottom: 10 }} />
+            <label style={lbl}>Fecha del último service</label>
+            <input type="date" value={newItem.last_service_date} onChange={e => setNewItem({ ...newItem, last_service_date: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+            <label style={lbl}>Notas (opcional)</label>
+            <input value={newItem.notes} onChange={e => setNewItem({ ...newItem, notes: e.target.value })} placeholder="Ej: Lleva correa de distribución" style={{ ...inp, marginBottom: 16 }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => { setShowAddItem(false); setSelectedVehicle(null); }} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>Cancelar</button>
+              <button onClick={addItem} style={{ ...btn(), flex: 2, fontSize: 13 }}>Guardar ✓</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MaintenanceItemRow({ item, status, color, label, kmSince, kmLeft, onUpdate, onDelete, showToast }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ last_service_km: item.last_service_km || "", last_service_date: item.last_service_date || arDate(), interval_km: item.interval_km || "", notes: item.notes || "" });
+
+  const save = async () => {
+    await onUpdate(item.id, { ...form, last_service_km: parseInt(form.last_service_km) || null, interval_km: parseInt(form.interval_km) || null });
+    setEditing(false);
+  };
+
+  return (
+    <div style={{ background: C.bg, borderRadius: 10, padding: 12, marginBottom: 8, border: "1px solid " + color + "44" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{item.name}</div>
+            <span style={{ fontSize: 10, background: color + "22", color, padding: "2px 8px", borderRadius: 100, fontWeight: 700 }}>{label}</span>
+          </div>
+          {!editing && (
+            <div style={{ fontSize: 11, color: C.muted }}>
+              {item.last_service_km && <span>Último: {Number(item.last_service_km).toLocaleString("es-AR")} km · </span>}
+              {item.last_service_date && <span>{item.last_service_date} · </span>}
+              {item.interval_km && <span>Cada {Number(item.interval_km).toLocaleString("es-AR")} km</span>}
+              {kmSince !== null && <div style={{ marginTop: 2 }}>
+                Recorridos desde último: <span style={{ color, fontWeight: 600 }}>{kmSince.toLocaleString("es-AR")} km</span>
+                {kmLeft !== null && <span style={{ color: kmLeft > 0 ? "#4ade80" : "#f43f5e" }}> · {kmLeft > 0 ? "Faltan " + kmLeft.toLocaleString("es-AR") + " km" : "Vencido por " + Math.abs(kmLeft).toLocaleString("es-AR") + " km"}</span>}
+              </div>}
+              {item.notes && <div style={{ marginTop: 2, color: C.muted, fontStyle: "italic" }}>{item.notes}</div>}
+            </div>
+          )}
+          {editing && (
+            <div style={{ marginTop: 8 }}>
+              <label style={lbl}>Km del último service</label>
+              <input type="number" value={form.last_service_km} onChange={e => setForm({...form, last_service_km: e.target.value})} style={{ ...inp, marginBottom: 8 }} />
+              <label style={lbl}>Fecha</label>
+              <input type="date" value={form.last_service_date} onChange={e => setForm({...form, last_service_date: e.target.value})} style={{ ...inp, marginBottom: 8 }} />
+              <label style={lbl}>Cada cuántos km</label>
+              <input type="number" value={form.interval_km} onChange={e => setForm({...form, interval_km: e.target.value})} style={{ ...inp, marginBottom: 8 }} />
+              <label style={lbl}>Notas</label>
+              <input value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} style={{ ...inp, marginBottom: 10 }} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setEditing(false)} style={{ ...btn(C.hi, C.text), flex: 1, border: "1px solid " + C.border, fontSize: 12 }}>Cancelar</button>
+                <button onClick={save} style={{ ...btn(), flex: 2, fontSize: 12 }}>Guardar ✓</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {!editing && (
+          <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 8 }}>
+            <button onClick={() => setEditing(true)} style={{ background: C.accent + "22", border: "1px solid " + C.accent + "44", borderRadius: 8, padding: "5px 10px", color: C.accent, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏️</button>
+            <button onClick={() => onDelete(item.id)} style={{ background: "none", border: "none", color: C.red + "88", fontSize: 20, cursor: "pointer" }}>×</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
