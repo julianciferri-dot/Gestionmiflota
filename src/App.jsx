@@ -1284,11 +1284,36 @@ function MantenimientoTab({ vehicles, maintenance, setMaintenance, records, show
   const [showAddItem, setShowAddItem] = useState(false);
   const [newItem, setNewItem] = useState({ name: "", interval_km: "", last_service_km: "", last_service_date: arDate(), notes: "" });
 
-  // Get latest km for each vehicle from records
+  const [manualKm, setManualKm] = useState({});
+  const [editingKm, setEditingKm] = useState(null);
+  const [kmInput, setKmInput] = useState("");
+
+  // Get latest km for each vehicle — manual takes priority, then from records
   const getLatestKm = (vehicleId) => {
+    if (manualKm[vehicleId]) return manualKm[vehicleId];
     const vRecs = records.filter(r => r.vehicle_id === vehicleId && r.km).sort((a, b) => b.date.localeCompare(a.date));
     return vRecs.length > 0 ? vRecs[0].km : null;
   };
+
+  const saveManualKm = (vehicleId) => {
+    const km = parseInt(kmInput);
+    if (!km || km <= 0) { showToast("Ingresá un km válido"); return; }
+    setManualKm(prev => ({ ...prev, [vehicleId]: km }));
+    try { localStorage.setItem("flota_km_" + vehicleId, km); } catch {}
+    setEditingKm(null);
+    setKmInput("");
+    showToast("Km actualizados ✓");
+  };
+
+  // Load manual km from localStorage on mount
+  useState(() => {
+    const saved = {};
+    vehicles.forEach(v => {
+      const km = localStorage.getItem("flota_km_" + v.id);
+      if (km) saved[v.id] = parseInt(km);
+    });
+    setManualKm(saved);
+  });
 
   const getItemStatus = (item, currentKm) => {
     if (!currentKm || !item.last_service_km || !item.interval_km) return "sin-datos";
@@ -1362,8 +1387,20 @@ function MantenimientoTab({ vehicles, maintenance, setMaintenance, records, show
             <div>
               <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO"}</div>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white }}>{v.name}</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                {v.km ? "📍 " + v.km.toLocaleString("es-AR") + " km actuales" : "Sin km registrados"}
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4, display: "flex", alignItems: "center", gap: 8 }}>
+                {editingKm === v.id ? (
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <input type="number" value={kmInput} onChange={e => setKmInput(e.target.value)}
+                      placeholder="Km actuales..." style={{ ...inp, width: 140, padding: "6px 10px", fontSize: 13 }} />
+                    <button onClick={() => saveManualKm(v.id)} style={{ background: C.accent, border: "none", borderRadius: 8, padding: "6px 12px", color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>✓</button>
+                    <button onClick={() => { setEditingKm(null); setKmInput(""); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 18, cursor: "pointer" }}>×</button>
+                  </div>
+                ) : (
+                  <>
+                    <span>{v.km ? "📍 " + Number(v.km).toLocaleString("es-AR") + " km" : "Sin km registrados"}</span>
+                    <button onClick={() => { setEditingKm(v.id); setKmInput(v.km || ""); }} style={{ background: C.hi, border: "1px solid " + C.border, borderRadius: 6, padding: "3px 8px", color: C.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>✏️ Editar km</button>
+                  </>
+                )}
               </div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
