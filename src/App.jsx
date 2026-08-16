@@ -23,6 +23,7 @@ const supa = async (path, method = "GET", body = null) => {
 
 const db = {
   get: (table, query = "") => supa(`${table}?${query}`),
+  getPaginated: (table, limit = 2000) => supa(`${table}?limit=${limit}&order=date.desc`),
   insert: (table, data) => supa(table, "POST", data),
   update: (table, id, data) => supa(`${table}?id=eq.${id}`, "PATCH", data),
   delete: (table, id) => supa(`${table}?id=eq.${id}`, "DELETE"),
@@ -109,7 +110,7 @@ export default function App() {
       const [d, v, r, e, o, m, vk] = await Promise.all([
         db.get("drivers").catch(() => []),
         db.get("vehicles").catch(() => []),
-        db.get("records").catch(() => []),
+        db.getPaginated("records", 2000).catch(() => []),
         db.get("expenses").catch(() => []),
         db.get("dayoffs").catch(() => []),
         db.get("maintenance").catch(() => []),
