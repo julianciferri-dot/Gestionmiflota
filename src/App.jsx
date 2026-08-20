@@ -731,6 +731,87 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
         {tab === 0 && (
           <div>
+            {/* RESUMEN RÁPIDO DEL DÍA */}
+            {(() => {
+              const todayRecs = records.filter(r => r.date === filterDay);
+              const todayFact = todayRecs.reduce((a, r) => a + Number(r.facturado), 0);
+              const todayGan = todayRecs.reduce((a, r) => {
+                const v = vehicles.find(vv => vv.id === r.vehicle_id);
+                const ownerPct = v ? Number(v.owner_pct) : 100;
+                return a + (v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia));
+              }, 0);
+              const cargaron = [...new Set(todayRecs.map(r => r.driver_id))].length;
+              const activeDrivers = drivers.filter(d => d.active !== false);
+              const conFranco = dayoffs.filter(o => o.date === filterDay).length;
+              const faltaron = activeDrivers.length - cargaron - conFranco;
+              return (
+                <div style={{ background: C.surface, borderRadius: 16, padding: 16, marginBottom: 16, border: "1px solid " + C.border }}>
+                  <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>⚡ Resumen del día</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                    <div style={{ background: C.bg, borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Facturado hoy</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.white, fontFamily: "'Syne', sans-serif" }}>{fmt(todayFact)}</div>
+                    </div>
+                    <div style={{ background: C.bg, borderRadius: 10, padding: 12 }}>
+                      <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Mi ganancia hoy</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.accent, fontFamily: "'Syne', sans-serif" }}>{fmt(todayGan)}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                    <div style={{ background: "#4ade8022", borderRadius: 8, padding: 8, textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#4ade80" }}>{cargaron}</div>
+                      <div style={{ fontSize: 9, color: C.muted }}>Cargaron</div>
+                    </div>
+                    <div style={{ background: "#f43f5e22", borderRadius: 8, padding: 8, textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.red }}>{Math.max(0, faltaron)}</div>
+                      <div style={{ fontSize: 9, color: C.muted }}>Faltan</div>
+                    </div>
+                    <div style={{ background: "#14b8a622", borderRadius: 8, padding: 8, textAlign: "center" }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.teal }}>{conFranco}</div>
+                      <div style={{ fontSize: 9, color: C.muted }}>Franco</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ALERTAS DE MANTENIMIENTO */}
+            {(() => {
+              const getLatestKm = (vehicleId) => {
+                const stored = localStorage.getItem("flota_km_" + vehicleId);
+                if (stored) return parseInt(stored);
+                const vRecs = records.filter(r => r.vehicle_id === vehicleId && r.km).sort((a, b) => b.date.localeCompare(a.date));
+                return vRecs.length > 0 ? vRecs[0].km : null;
+              };
+              const alerts = [];
+              vehicles.forEach(v => {
+                const km = getLatestKm(v.id);
+                maintenance.filter(m => m.vehicle_id === v.id).forEach(m => {
+                  if (!m.interval_km || !m.last_service_km || !km) return;
+                  const kmSince = km - m.last_service_km;
+                  const pct = kmSince / m.interval_km;
+                  if (pct >= 0.85) alerts.push({ vehicle: v.name, item: m.name, status: pct >= 1 ? "vencido" : "proximo", kmLeft: m.interval_km - kmSince });
+                });
+              });
+              if (alerts.length === 0) return null;
+              return (
+                <div style={{ background: C.surface, borderRadius: 16, padding: 14, marginBottom: 16, border: "1px solid #f43f5e44" }}>
+                  <div style={{ fontSize: 10, color: C.red, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>🔧 Alertas de mantenimiento</div>
+                  {alerts.map((a, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: i < alerts.length - 1 ? "1px solid " + C.border : "none" }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.white }}>{a.vehicle.split(" ").slice(-1)}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{a.item}</div>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 700, background: a.status === "vencido" ? "#f43f5e33" : "#f59e0b33", color: a.status === "vencido" ? C.red : C.accent, padding: "3px 10px", borderRadius: 100 }}>
+                        {a.status === "vencido" ? "🔴 Vencido" : "⚠️ Faltan " + Math.abs(a.kmLeft).toLocaleString("es-AR") + " km"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             <button onClick={sendReminder} style={{ ...btn("#25d366", "#fff"), marginBottom: 16 }}>
               📲 Ver quién no cargó ayer → WhatsApp
             </button>
@@ -2140,6 +2221,41 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
 
       <button onClick={generatePDF} style={{ ...btn(), marginTop: 8 }}>
         📄 Generar PDF para imprimir
+      </button>
+
+      <button onClick={() => {
+        // Generate CSV
+        const headers = ["Fecha","Chofer","Vehículo","Facturado","Combustible","Neto","Chofer %","Ganancia dueño","Pagado"];
+        const rows = records
+          .filter(r => period === "semana" ? r.week === selectedWeek : (r.month || r.date.slice(0,7)) === selectedMonth)
+          .sort((a,b) => a.date.localeCompare(b.date))
+          .map(r => {
+            const d = drivers.find(dr => dr.id === r.driver_id);
+            const v = vehicles.find(vv => vv.id === r.vehicle_id);
+            const ownerPct = v ? Number(v.owner_pct) : 100;
+            const myGain = v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia);
+            return [
+              r.date,
+              d ? d.name : r.driver_id,
+              v ? v.name : r.vehicle_id,
+              Number(r.facturado),
+              Number(r.combustible),
+              Number(r.neto),
+              Number(r.chofer),
+              Math.round(myGain),
+              r.paid ? "Sí" : "No"
+            ];
+          });
+        const csv = [headers, ...rows].map(row => row.join(",")).join("\n");
+        const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "miflota_" + (period === "semana" ? selectedWeek : selectedMonth) + ".csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      }} style={{ ...btn(C.teal, "#000"), marginTop: 8 }}>
+        📊 Exportar a Excel (CSV)
       </button>
 
       {/* WhatsApp para dueños de autos terceros */}
