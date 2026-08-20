@@ -96,6 +96,7 @@ export default function App() {
   const [dayoffs, setDayoffs] = useState([]);
   const [maintenance, setMaintenance] = useState([]);
   const [vehicleKm, setVehicleKm] = useState([]);
+  const [turnosDB, setTurnosDB] = useState([]);
   const [ownerPin, setOwnerPinState] = useState(getOwnerPin());
   const [view, setView] = useState("login");
   const [currentDriver, setCurrentDriver] = useState(null);
@@ -107,7 +108,7 @@ export default function App() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [d, v, r, e, o, m, vk] = await Promise.all([
+      const [d, v, r, e, o, m, vk, t] = await Promise.all([
         db.get("drivers").catch(() => []),
         db.get("vehicles").catch(() => []),
         db.getPaginated("records", 2000).catch(() => []),
@@ -115,6 +116,7 @@ export default function App() {
         db.get("dayoffs").catch(() => []),
         db.get("maintenance").catch(() => []),
         db.get("vehicle_km").catch(() => []),
+        db.get("turnos").catch(() => []),
       ]);
       setDrivers(d || []);
       if (!v || v.length === 0) {
@@ -126,6 +128,7 @@ export default function App() {
       setDayoffs(o || []);
       setMaintenance(m || []);
       setVehicleKm(vk || []);
+      setTurnosDB(t || []);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -149,7 +152,7 @@ export default function App() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
       {view === "login" && <LoginScreen drivers={drivers} ownerPin={ownerPin} onDriver={(d) => { setCurrentDriver(d); setView("driver"); }} onOwner={() => setView("owner")} />}
       {view === "driver" && <DriverScreen driver={currentDriver} vehicles={vehicles} records={records} dayoffs={dayoffs} setDayoffs={setDayoffs} setRecords={setRecords} showToast={showToast} onBack={() => setView("login")} vName={vName} />}
-      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} setDrivers={setDrivers} setVehicles={setVehicles} setRecords={setRecords} setExpenses={setExpenses} setDayoffs={setDayoffs} ownerPin={ownerPin} saveOwnerPin={setOwnerPinState} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} reload={loadAll} maintenance={maintenance} setMaintenance={setMaintenance} vehicleKm={vehicleKm} setVehicleKm={setVehicleKm} />}
+      {view === "owner" && <OwnerScreen drivers={drivers} vehicles={vehicles} records={records} expenses={expenses} dayoffs={dayoffs} setDrivers={setDrivers} setVehicles={setVehicles} setRecords={setRecords} setExpenses={setExpenses} setDayoffs={setDayoffs} ownerPin={ownerPin} saveOwnerPin={setOwnerPinState} onBack={() => setView("login")} dName={dName} vName={vName} showToast={showToast} reload={loadAll} maintenance={maintenance} setMaintenance={setMaintenance} vehicleKm={vehicleKm} setVehicleKm={setVehicleKm} turnosDB={turnosDB} setTurnosDB={setTurnosDB} />}
       {toast && <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", background: C.accent, color: "#000", padding: "12px 24px", borderRadius: 100, fontSize: 14, fontWeight: 700, zIndex: 999, whiteSpace: "nowrap" }}>{toast}</div>}
     </div>
   );
@@ -496,7 +499,7 @@ function DriverScreen({ driver, vehicles, records, dayoffs, setDayoffs, setRecor
   );
 }
 
-function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload, maintenance, setMaintenance, vehicleKm, setVehicleKm }) {
+function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers, setVehicles, setRecords, setExpenses, setDayoffs, ownerPin, saveOwnerPin, onBack, dName, vName, showToast, reload, maintenance, setMaintenance, vehicleKm, setVehicleKm, turnosDB, setTurnosDB }) {
   const TABS = ["Dashboard", "Vehículos", "Choferes", "Planilla", "Mantenimiento", "Gastos", "Resumen", "Turnos", "Config"];
   const [tab, setTab] = useState(0);
   const [period, setPeriod] = useState("dia");
@@ -997,7 +1000,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         )}
 
         {tab === 7 && (
-          <TurnosTab vehicles={vehicles} drivers={drivers} />
+          <TurnosTab vehicles={vehicles} drivers={drivers} turnosDB={turnosDB} setTurnosDB={setTurnosDB} />
         )}
 
         {tab === 8 && (
@@ -1580,8 +1583,7 @@ function VehicleAddForm({ vehicles, setVehicles, showToast }) {
   );
 }
 
-function TurnosTab({ vehicles, drivers }) {
-  const STORAGE_KEY = "flota_turnos_v2";
+function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
   const WEEK_KEY = "flota_turnos_week";
 
   const getWeekDays = (startDate) => {
@@ -1595,50 +1597,85 @@ function TurnosTab({ vehicles, drivers }) {
     return days;
   };
 
-  const loadTurnos = () => {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
-    catch { return {}; }
-  };
-
   const [weekStart, setWeekStart] = useState(() => {
     return localStorage.getItem(WEEK_KEY) || weekOf(arDate());
   });
-  const [turnos, setTurnos] = useState(loadTurnos);
-  const [editingCell, setEditingCell] = useState(null); // {vehicleId, shift, day}
-  const [view, setView] = useState("planilla"); // planilla | cards
+  const [editingCell, setEditingCell] = useState(null);
+  const [view, setView] = useState("planilla"); // planilla | template | cards
+  const [savingCell, setSavingCell] = useState(null);
 
   const days = getWeekDays(weekStart);
   const dayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const today = arDate();
 
-  const saveTurnos = (t) => {
-    setTurnos(t);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(t)); } catch {}
-  };
-
-  const getKey = (vehicleId, shift, day) => `${vehicleId}_${shift}_${day}`;
+  // Filter turnosDB for current week and template
+  const weekTurnos = turnosDB.filter(t => !t.is_template && t.day && days.includes(t.day));
+  const templateTurnos = turnosDB.filter(t => t.is_template);
 
   const getAssigned = (vehicleId, shift, day) => {
-    const driverId = turnos[getKey(vehicleId, shift, day)];
-    return driverId ? drivers.find(d => d.id === driverId) : null;
+    const t = weekTurnos.find(t => t.vehicle_id === vehicleId && t.shift === shift && t.day === day);
+    return t ? drivers.find(d => d.id === t.driver_id) : null;
   };
 
-  const assign = (vehicleId, shift, day, driverId) => {
-    const key = getKey(vehicleId, shift, day);
-    const next = driverId ? { ...turnos, [key]: driverId } : { ...turnos };
-    if (!driverId) delete next[key];
-    saveTurnos(next);
+  const getTemplateAssigned = (vehicleId, shift) => {
+    const t = templateTurnos.find(t => t.vehicle_id === vehicleId && t.shift === shift);
+    return t ? drivers.find(d => d.id === t.driver_id) : null;
+  };
+
+  const assign = async (vehicleId, shift, day, driverId, isTemplate = false) => {
     setEditingCell(null);
+    setSavingCell(`${vehicleId}_${shift}_${day || "tpl"}`);
+    try {
+      if (isTemplate) {
+        // Remove existing template entry
+        const existing = templateTurnos.find(t => t.vehicle_id === vehicleId && t.shift === shift);
+        if (existing) await db.delete("turnos", existing.id);
+        if (driverId) {
+          const newT = { id: Date.now().toString(), vehicle_id: vehicleId, shift, day: null, driver_id: driverId, is_template: true };
+          await db.insert("turnos", newT);
+          setTurnosDB(prev => [...prev.filter(t => !(t.is_template && t.vehicle_id === vehicleId && t.shift === shift)), newT]);
+        } else {
+          setTurnosDB(prev => prev.filter(t => !(t.is_template && t.vehicle_id === vehicleId && t.shift === shift)));
+        }
+      } else {
+        const existing = weekTurnos.find(t => t.vehicle_id === vehicleId && t.shift === shift && t.day === day);
+        if (existing) await db.delete("turnos", existing.id);
+        if (driverId) {
+          const newT = { id: Date.now().toString(), vehicle_id: vehicleId, shift, day, driver_id: driverId, is_template: false };
+          await db.insert("turnos", newT);
+          setTurnosDB(prev => [...prev.filter(t => !(t.vehicle_id === vehicleId && t.shift === shift && t.day === day && !t.is_template)), newT]);
+        } else {
+          setTurnosDB(prev => prev.filter(t => !(t.vehicle_id === vehicleId && t.shift === shift && t.day === day && !t.is_template)));
+        }
+      }
+    } catch (e) { console.error(e); }
+    setSavingCell(null);
+  };
+
+  const applyTemplate = async () => {
+    if (!window.confirm("¿Aplicar la plantilla a la semana del " + weekStart + "? Esto sobreescribe los turnos actuales de esa semana.")) return;
+    // Delete existing week turnos
+    const existing = weekTurnos;
+    await Promise.all(existing.map(t => db.delete("turnos", t.id)));
+    // Create new ones from template for each day
+    const newTurnos = [];
+    for (const tpl of templateTurnos) {
+      for (const day of days) {
+        const newT = { id: Date.now().toString() + Math.random(), vehicle_id: tpl.vehicle_id, shift: tpl.shift, day, driver_id: tpl.driver_id, is_template: false };
+        await db.insert("turnos", newT);
+        newTurnos.push(newT);
+      }
+    }
+    setTurnosDB(prev => [...prev.filter(t => t.is_template || !days.includes(t.day)), ...newTurnos]);
   };
 
   // Count stats
   const totalSlots = vehicles.length * 2 * 7;
-  const assignedSlots = Object.keys(turnos).filter(k => turnos[k]).length;
+  const assignedSlots = weekTurnos.length;
   const emptySlots = totalSlots - assignedSlots;
 
-  // Drivers already assigned today
-  const today = arDate();
   const assignedToday = new Set(
-    ["dia","noche"].flatMap(shift => vehicles.map(v => turnos[getKey(v.id, shift, today)])).filter(Boolean)
+    weekTurnos.filter(t => t.day === today).map(t => t.driver_id).filter(Boolean)
   );
   const freeDrivers = drivers.filter(d => d.active !== false && !assignedToday.has(d.id));
 
@@ -1667,9 +1704,10 @@ function TurnosTab({ vehicles, drivers }) {
           setWeekStart(e.target.value);
           localStorage.setItem(WEEK_KEY, e.target.value);
         }} style={{ ...inp, marginBottom: 10 }} />
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setView("planilla")} style={{ flex: 1, background: view === "planilla" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "9px", color: view === "planilla" ? "#000" : C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📋 Planilla</button>
-          <button onClick={() => setView("cards")} style={{ flex: 1, background: view === "cards" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "9px", color: view === "cards" ? "#000" : C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>🗂️ Tarjetas</button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => setView("planilla")} style={{ flex: 1, background: view === "planilla" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "8px", color: view === "planilla" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📋 Planilla</button>
+          <button onClick={() => setView("template")} style={{ flex: 1, background: view === "template" ? "#14b8a6" : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "8px", color: view === "template" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📌 Fijos</button>
+          <button onClick={() => setView("cards")} style={{ flex: 1, background: view === "cards" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "8px", color: view === "cards" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>🗂️ Tarjetas</button>
         </div>
       </div>
 
@@ -1698,6 +1736,53 @@ function TurnosTab({ vehicles, drivers }) {
               <span key={d.id} style={{ background: C.hi, borderRadius: 8, padding: "4px 10px", fontSize: 11, color: C.teal, border: "1px solid " + C.teal + "33" }}>{d.name}</span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* TEMPLATE VIEW */}
+      {view === "template" && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ ...card, borderColor: C.teal + "44", marginBottom: 12 }}>
+            <div style={{ fontSize: 10, color: C.teal, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>📌 Choferes fijos por auto</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Configurá los choferes predeterminados. Luego podés aplicarlos a cualquier semana con un toque.</div>
+            <button onClick={applyTemplate} style={{ ...btn(C.teal, "#000"), fontSize: 13, marginBottom: 0 }}>
+              ✓ Aplicar plantilla a semana del {weekStart}
+            </button>
+          </div>
+          {vehicles.map(v => (
+            <div key={v.id} style={{ ...card, padding: 12, marginBottom: 8 }}>
+              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white, marginBottom: 10 }}>{v.name}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {["dia", "noche"].map(shift => {
+                  const assigned = getTemplateAssigned(v.id, shift);
+                  const isEditing = editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === "tpl";
+                  return (
+                    <div key={shift} style={{ background: C.bg, borderRadius: 10, padding: 10, border: "1px solid " + (assigned ? (shift === "dia" ? "#f59e0b44" : "#1e3a6e88") : C.border) }}>
+                      <div style={{ fontSize: 10, color: C.muted, marginBottom: 6 }}>{shift === "dia" ? "☀️ Día" : "🌙 Noche"}</div>
+                      {isEditing ? (
+                        <select autoFocus onChange={e => assign(v.id, shift, null, e.target.value || null, true)}
+                          defaultValue={assigned?.id || ""}
+                          style={{ ...inp, fontSize: 12, padding: "6px" }}>
+                          <option value="">— Sin asignar</option>
+                          {drivers.filter(d => d.active !== false).map(d => (
+                            <option key={d.id} value={d.id}>{d.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div onClick={() => setEditingCell({ vehicleId: v.id, shift, day: "tpl" })}
+                          style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 12, color: assigned ? (shift === "dia" ? C.accent : "#93c5fd") : C.muted, fontWeight: assigned ? 600 : 400 }}>
+                            {assigned ? assigned.name : "+ Asignar"}
+                          </span>
+                          {assigned && <span style={{ fontSize: 11, color: C.muted }}>✏️</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1810,8 +1895,12 @@ function TurnosTab({ vehicles, drivers }) {
         <button onClick={sendWhatsApp} style={{ ...btn("#25d366", "#fff"), flex: 2, fontSize: 13 }}>
           📲 Compartir por WhatsApp
         </button>
-        <button onClick={() => { saveTurnos({}); }} style={{ ...btn(C.hi, C.muted), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>
-          🗑️ Limpiar
+        <button onClick={async () => {
+          if (!window.confirm("¿Limpiar todos los turnos de esta semana?")) return;
+          await Promise.all(weekTurnos.map(t => db.delete("turnos", t.id)));
+          setTurnosDB(prev => prev.filter(t => t.is_template || !days.includes(t.day)));
+        }} style={{ ...btn(C.hi, C.muted), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>
+          🗑️ Limpiar semana
         </button>
       </div>
     </div>
