@@ -507,6 +507,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
   const [newDrv, setNewDrv] = useState({ name: "", pin: "", vehicle_id: "", pct: "40" });
   const [newOwnerPin, setNewOwnerPin] = useState(ownerPin);
   const [newExpense, setNewExpense] = useState({ vehicle_id: "", category: "mecanico", description: "", amount: "", date: arDate() });
+  const [driverSearch, setDriverSearch] = useState("");
   const [desktopMode, setDesktopMode] = useState(() => localStorage.getItem("flota_desktop") === "1");
 
   const toggleDesktop = () => {
@@ -882,6 +883,17 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
         {tab === 2 && (
           <div>
+            {/* Buscador de choferes */}
+            <div style={{ marginBottom: 14 }}>
+              <input
+                type="text"
+                placeholder="🔍 Buscar chofer..."
+                value={driverSearch}
+                onChange={e => setDriverSearch(e.target.value)}
+                style={{ ...inp, fontSize: 15 }}
+              />
+            </div>
+
             <div style={{ ...card, marginBottom: 20 }}>
               <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 14 }}>Agregar chofer</div>
               <label style={lbl}>Nombre</label>
@@ -920,7 +932,9 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
               </div>
             )}
             <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", margin: "20px 0 12px" }}>Editar choferes</div>
-            {drivers.map(d => (
+            {drivers
+              .filter(d => !driverSearch || d.name.toLowerCase().includes(driverSearch.toLowerCase()))
+              .map(d => (
               <DriverCard key={d.id} d={d} drivers={drivers} records={records} vehicles={vehicles} setRecords={setRecords} onUpdate={(changes) => updateDriver(d.id, changes)} onDelete={() => deleteDriver(d.id)} showToast={showToast} onViewPhotos={setSelectedRecord} />
             ))}
           </div>
@@ -1567,59 +1581,101 @@ function VehicleAddForm({ vehicles, setVehicles, showToast }) {
 }
 
 function TurnosTab({ vehicles, drivers }) {
-  const STORAGE_KEY = "flota_turnos_v1";
+  const STORAGE_KEY = "flota_turnos_v2";
+  const WEEK_KEY = "flota_turnos_week";
+
+  const getWeekDays = (startDate) => {
+    const days = [];
+    const start = new Date(startDate + "T00:00:00");
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      days.push(d.toISOString().split("T")[0]);
+    }
+    return days;
+  };
 
   const loadTurnos = () => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+    catch { return {}; }
   };
 
+  const [weekStart, setWeekStart] = useState(() => {
+    return localStorage.getItem(WEEK_KEY) || weekOf(arDate());
+  });
   const [turnos, setTurnos] = useState(loadTurnos);
-  const [editingSlot, setEditingSlot] = useState(null); // { vehicleId, shift }
+  const [editingCell, setEditingCell] = useState(null); // {vehicleId, shift, day}
+  const [view, setView] = useState("planilla"); // planilla | cards
 
-  const saveTurnos = (newTurnos) => {
-    setTurnos(newTurnos);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(newTurnos)); } catch {}
+  const days = getWeekDays(weekStart);
+  const dayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+  const saveTurnos = (t) => {
+    setTurnos(t);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(t)); } catch {}
   };
 
-  const assignDriver = (vehicleId, shift, driverId) => {
-    const key = vehicleId + "_" + shift;
-    const newTurnos = { ...turnos, [key]: driverId };
-    saveTurnos(newTurnos);
-    setEditingSlot(null);
-  };
+  const getKey = (vehicleId, shift, day) => `${vehicleId}_${shift}_${day}`;
 
-  const removeDriver = (vehicleId, shift) => {
-    const key = vehicleId + "_" + shift;
-    const newTurnos = { ...turnos };
-    delete newTurnos[key];
-    saveTurnos(newTurnos);
-  };
-
-  const getDriver = (vehicleId, shift) => {
-    const key = vehicleId + "_" + shift;
-    const driverId = turnos[key];
+  const getAssigned = (vehicleId, shift, day) => {
+    const driverId = turnos[getKey(vehicleId, shift, day)];
     return driverId ? drivers.find(d => d.id === driverId) : null;
   };
 
-  // Count assigned and empty slots
-  const totalSlots = vehicles.length * 2;
-  const assignedSlots = vehicles.reduce((a, v) => {
-    return a + (turnos[v.id + "_dia"] ? 1 : 0) + (turnos[v.id + "_noche"] ? 1 : 0);
-  }, 0);
+  const assign = (vehicleId, shift, day, driverId) => {
+    const key = getKey(vehicleId, shift, day);
+    const next = driverId ? { ...turnos, [key]: driverId } : { ...turnos };
+    if (!driverId) delete next[key];
+    saveTurnos(next);
+    setEditingCell(null);
+  };
+
+  // Count stats
+  const totalSlots = vehicles.length * 2 * 7;
+  const assignedSlots = Object.keys(turnos).filter(k => turnos[k]).length;
   const emptySlots = totalSlots - assignedSlots;
 
-  // Find unassigned drivers
-  const assignedDriverIds = Object.values(turnos).filter(Boolean);
-  const freeDrivers = drivers.filter(d => d.active !== false && !assignedDriverIds.includes(d.id));
+  // Drivers already assigned today
+  const today = arDate();
+  const assignedToday = new Set(
+    ["dia","noche"].flatMap(shift => vehicles.map(v => turnos[getKey(v.id, shift, today)])).filter(Boolean)
+  );
+  const freeDrivers = drivers.filter(d => d.active !== false && !assignedToday.has(d.id));
+
+  const sendWhatsApp = () => {
+    const lines = ["🚗 *Turnos semana del " + weekStart + "*", ""];
+    vehicles.forEach(v => {
+      lines.push("*" + v.name + "*");
+      days.forEach((day, i) => {
+        const dia = getAssigned(v.id, "dia", day);
+        const noche = getAssigned(v.id, "noche", day);
+        if (dia || noche) {
+          lines.push(dayLabels[i] + " " + day.slice(8) + ": ☀️ " + (dia ? dia.name : "—") + " 🌙 " + (noche ? noche.name : "—"));
+        }
+      });
+      lines.push("");
+    });
+    window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
+  };
 
   return (
     <div>
+      {/* Week selector */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={lbl}>Semana</label>
+        <input type="date" value={weekStart} onChange={e => {
+          setWeekStart(e.target.value);
+          localStorage.setItem(WEEK_KEY, e.target.value);
+        }} style={{ ...inp, marginBottom: 10 }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => setView("planilla")} style={{ flex: 1, background: view === "planilla" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "9px", color: view === "planilla" ? "#000" : C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📋 Planilla</button>
+          <button onClick={() => setView("cards")} style={{ flex: 1, background: view === "cards" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "9px", color: view === "cards" ? "#000" : C.text, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>🗂️ Tarjetas</button>
+        </div>
+      </div>
+
       {/* Summary */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
-        <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid " + C.border, textAlign: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+        <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid #4ade8044", textAlign: "center" }}>
           <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Cubiertos</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: "#4ade80", fontFamily: "'Syne', sans-serif" }}>{assignedSlots}</div>
         </div>
@@ -1628,100 +1684,136 @@ function TurnosTab({ vehicles, drivers }) {
           <div style={{ fontSize: 22, fontWeight: 700, color: C.red, fontFamily: "'Syne', sans-serif" }}>{emptySlots}</div>
         </div>
         <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid " + C.teal + "44", textAlign: "center" }}>
-          <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Disponibles</div>
+          <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Libres hoy</div>
           <div style={{ fontSize: 22, fontWeight: 700, color: C.teal, fontFamily: "'Syne', sans-serif" }}>{freeDrivers.length}</div>
         </div>
       </div>
 
-      {/* Free drivers */}
+      {/* Free drivers today */}
       {freeDrivers.length > 0 && (
-        <div style={{ ...card, marginBottom: 16, borderColor: C.teal + "44" }}>
-          <div style={{ fontSize: 10, color: C.teal, letterSpacing: 2, textTransform: "uppercase", marginBottom: 10 }}>👤 Choferes sin turno asignado</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ ...card, marginBottom: 12, borderColor: C.teal + "33", padding: 12 }}>
+          <div style={{ fontSize: 10, color: C.teal, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>👤 Sin turno hoy</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {freeDrivers.map(d => (
-              <div key={d.id} style={{ background: C.hi, borderRadius: 8, padding: "6px 12px", fontSize: 12, color: C.teal, border: "1px solid " + C.teal + "44" }}>
-                {d.name}
-              </div>
+              <span key={d.id} style={{ background: C.hi, borderRadius: 8, padding: "4px 10px", fontSize: 11, color: C.teal, border: "1px solid " + C.teal + "33" }}>{d.name}</span>
             ))}
           </div>
         </div>
       )}
 
-      {/* Vehicle grid */}
-      {vehicles.map(v => (
-        <div key={v.id} style={{ ...card, padding: 14, marginBottom: 10 }}>
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO " + v.owner_pct + "%"}</div>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 14, fontWeight: 700, color: C.white }}>{v.name}</div>
+      {/* PLANILLA VIEW */}
+      {view === "planilla" && (
+        <div style={{ overflowX: "auto", marginBottom: 12 }}>
+          <table style={{ borderCollapse: "collapse", fontSize: 10, minWidth: 600 }}>
+            <thead>
+              <tr>
+                <th style={{ background: "#1a2a4a", color: C.white, padding: "8px 10px", textAlign: "left", minWidth: 120, position: "sticky", left: 0, zIndex: 2, fontSize: 10 }}>Vehículo</th>
+                <th style={{ background: "#1a2a4a", color: C.muted, padding: "8px 6px", fontSize: 9, width: 50 }}>Turno</th>
+                {days.map((day, i) => (
+                  <th key={day} style={{ background: day === today ? C.accent + "33" : "#1a2a4a", color: day === today ? C.accent : C.muted, padding: "6px 4px", textAlign: "center", minWidth: 80, fontSize: 9 }}>
+                    {dayLabels[i]}<br/><span style={{ fontSize: 8 }}>{day.slice(5)}</span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {vehicles.map((v, vi) => (
+                ["dia", "noche"].map((shift, si) => {
+                  const isDay = shift === "dia";
+                  return (
+                    <tr key={v.id + shift} style={{ background: vi % 2 === 0 ? "#0a1628" : "#0d1a30" }}>
+                      {si === 0 && (
+                        <td rowSpan={2} style={{ padding: "6px 8px", verticalAlign: "middle", position: "sticky", left: 0, background: vi % 2 === 0 ? "#0a1628" : "#0d1a30", zIndex: 1, borderRight: "1px solid " + C.border }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{v.name.split(" ").slice(0,2).join(" ")}</div>
+                          <div style={{ fontSize: 8, color: v.type === "own" ? C.teal : C.accent }}>{v.name.split(" ").slice(-1)}</div>
+                        </td>
+                      )}
+                      <td style={{ padding: "4px 6px", textAlign: "center", background: isDay ? "#f59e0b22" : "#1e3a6e22", borderRight: "1px solid " + C.border }}>
+                        <span style={{ fontSize: 12 }}>{isDay ? "☀️" : "🌙"}</span>
+                      </td>
+                      {days.map(day => {
+                        const assigned = getAssigned(v.id, shift, day);
+                        const isEditing = editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day;
+                        return (
+                          <td key={day} style={{ padding: 2, textAlign: "center", background: day === today ? (isDay ? "#f59e0b11" : "#1e3a6e22") : "transparent", borderRight: "1px solid " + C.border + "44" }}>
+                            {isEditing ? (
+                              <select autoFocus onChange={e => assign(v.id, shift, day, e.target.value || null)} defaultValue={assigned?.id || ""}
+                                style={{ fontSize: 9, background: C.surface, border: "1px solid " + C.accent, borderRadius: 4, color: C.text, padding: "2px", width: "100%", fontFamily: "inherit" }}>
+                                <option value="">— Libre</option>
+                                {drivers.filter(d => d.active !== false).map(d => (
+                                  <option key={d.id} value={d.id}>{d.name.split(" ")[0] + " " + (d.name.split(" ")[1] || "")}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div onClick={() => setEditingCell({ vehicleId: v.id, shift, day })}
+                                style={{ cursor: "pointer", borderRadius: 4, padding: "3px 2px", background: assigned ? (isDay ? "#f59e0b33" : "#1e3a6e55") : "transparent", minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                {assigned ? (
+                                  <span style={{ fontSize: 8, color: isDay ? C.accent : "#93c5fd", fontWeight: 600, lineHeight: 1.2 }}>
+                                    {assigned.name.split(" ")[0]}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: C.border, fontSize: 10 }}>+</span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* CARDS VIEW */}
+      {view === "cards" && vehicles.map(v => (
+        <div key={v.id} style={{ ...card, padding: 12, marginBottom: 10 }}>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO"}</div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{v.name}</div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {["dia", "noche"].map(shift => {
-              const assignedDriver = getDriver(v.id, shift);
-              const isEditing = editingSlot?.vehicleId === v.id && editingSlot?.shift === shift;
-              return (
-                <div key={shift} style={{ background: C.bg, borderRadius: 10, padding: 10, border: "1px solid " + (assignedDriver ? "#16a34a44" : C.red + "33") }}>
-                  <div style={{ fontSize: 10, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
-                    {shift === "dia" ? "☀️ Día" : "🌙 Noche"}
-                  </div>
-                  {isEditing ? (
-                    <div>
-                      <select onChange={e => assignDriver(v.id, shift, e.target.value)} defaultValue=""
-                        style={{ ...inp, fontSize: 12, padding: "8px", marginBottom: 6 }}>
-                        <option value="" disabled>Elegí un chofer...</option>
-                        <option value="__remove__">— Sin asignar</option>
-                        {drivers.filter(d => d.active !== false && !Object.entries(turnos).some(([k, val]) => val === d.id && k !== v.id + "_" + shift)).map(d => (
-                          <option key={d.id} value={d.id}>{d.name}</option>
-                        ))}
-                      </select>
-                      <button onClick={() => setEditingSlot(null)} style={{ background: "none", border: "none", color: C.muted, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+            {days.map((day, i) => (
+              <div key={day} style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 8, color: day === today ? C.accent : C.muted, marginBottom: 2 }}>{dayLabels[i]}</div>
+                {["dia","noche"].map(shift => {
+                  const assigned = getAssigned(v.id, shift, day);
+                  return (
+                    <div key={shift} onClick={() => setEditingCell(editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day ? null : { vehicleId: v.id, shift, day })}
+                      style={{ background: assigned ? (shift === "dia" ? "#f59e0b33" : "#1e3a6e55") : C.hi, borderRadius: 4, padding: "3px 2px", marginBottom: 2, cursor: "pointer", minHeight: 20 }}>
+                      {editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day ? (
+                        <select autoFocus onChange={e => assign(v.id, shift, day, e.target.value || null)} defaultValue={assigned?.id || ""}
+                          style={{ fontSize: 8, background: C.surface, border: "none", color: C.text, width: "100%", fontFamily: "inherit" }}>
+                          <option value="">—</option>
+                          {drivers.filter(d => d.active !== false).map(d => (
+                            <option key={d.id} value={d.id}>{d.name.split(" ")[0]}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span style={{ fontSize: 7, color: assigned ? (shift === "dia" ? C.accent : "#93c5fd") : C.muted }}>
+                          {assigned ? assigned.name.split(" ")[0] : shift === "dia" ? "☀️" : "🌙"}
+                        </span>
+                      )}
                     </div>
-                  ) : assignedDriver ? (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#4ade80" }}>{assignedDriver.name}</div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button onClick={() => setEditingSlot({ vehicleId: v.id, shift })}
-                          style={{ background: "none", border: "none", color: C.accent, fontSize: 14, cursor: "pointer" }}>✏️</button>
-                        <button onClick={() => removeDriver(v.id, shift)}
-                          style={{ background: "none", border: "none", color: C.red + "88", fontSize: 18, cursor: "pointer" }}>×</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => setEditingSlot({ vehicleId: v.id, shift })}
-                      style={{ width: "100%", background: C.hi, border: "1px dashed " + C.border, borderRadius: 8, padding: "8px", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit", textAlign: "center" }}>
-                      + Asignar chofer
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       ))}
 
-      <button onClick={() => {
-        const lines = ["🚗 *Resumen de turnos*", ""];
-        vehicles.forEach(v => {
-          const dia = getDriver(v.id, "dia");
-          const noche = getDriver(v.id, "noche");
-          lines.push("*" + v.name + "*");
-          lines.push("☀️ Día: " + (dia ? dia.name : "— VACÍO"));
-          lines.push("🌙 Noche: " + (noche ? noche.name : "— VACÍO"));
-          lines.push("");
-        });
-        if (freeDrivers.length > 0) {
-          lines.push("👤 *Sin turno asignado:*");
-          freeDrivers.forEach(d => lines.push("• " + d.name));
-          lines.push("");
-        }
-        lines.push("Turnos vacíos: " + emptySlots + " · Cubiertos: " + assignedSlots);
-        window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
-      }} style={{ ...btn("#25d366", "#fff"), fontSize: 13, marginTop: 8 }}>
-        📲 Compartir turnos por WhatsApp
-      </button>
-
-      <button onClick={() => { saveTurnos({}); }} style={{ ...btn(C.hi, C.muted), border: "1px solid " + C.border, fontSize: 13, marginTop: 8 }}>
-        🗑️ Limpiar todos los turnos
-      </button>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={sendWhatsApp} style={{ ...btn("#25d366", "#fff"), flex: 2, fontSize: 13 }}>
+          📲 Compartir por WhatsApp
+        </button>
+        <button onClick={() => { saveTurnos({}); }} style={{ ...btn(C.hi, C.muted), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>
+          🗑️ Limpiar
+        </button>
+      </div>
     </div>
   );
 }
