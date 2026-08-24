@@ -582,7 +582,12 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
     catch { showToast("Error al agregar chofer"); }
   };
 
-  const deleteDriver = async (id) => { await db.delete("drivers", id); setDrivers(prev => prev.filter(d => d.id !== id)); };
+  const deleteDriver = async (id) => {
+    const d = drivers.find(dr => dr.id === id);
+    if (!window.confirm("¿Seguro que querés eliminar a " + (d ? d.name : "este chofer") + "? Esta acción no se puede deshacer.")) return;
+    await db.delete("drivers", id);
+    setDrivers(prev => prev.filter(d => d.id !== id));
+  };
   const updateDriver = async (id, changes) => { await db.update("drivers", id, changes); setDrivers(prev => prev.map(d => d.id === id ? { ...d, ...changes } : d)); };
 
   const addExpense = async () => {
