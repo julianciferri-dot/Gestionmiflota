@@ -544,9 +544,13 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
     const totalChofer = rs.reduce((a, r) => a + Number(r.chofer), 0);
     const otrosGastos = exps.reduce((a, e) => a + Number(e.amount), 0);
     const ownerPct = Number(v.owner_pct) || 100;
-    const gananciaBruta = neto - totalChofer;
-    const gananciaBase = v.type === "own" ? gananciaBruta : (gananciaBruta * ownerPct / 100);
-    const gananciaReal = gananciaBase - otrosGastos;
+    const gananciaBruta = neto - totalChofer; // 60% del neto
+    // Para autos propios: ganancia - gastos = tuyo
+    // Para terceros: ganancia - gastos = base, luego tu % de esa base
+    const gananciaBase = v.type === "own"
+      ? gananciaBruta - otrosGastos
+      : (gananciaBruta - otrosGastos) * ownerPct / 100;
+    const gananciaReal = gananciaBase;
     const choferes = [...new Set(rs.map(r => r.driver_id))];
     return { ...v, facturado, combustible, neto, totalChofer, otrosGastos, gananciaBase, gananciaReal, dias: rs.length, choferes, records: rs };
   });
@@ -743,6 +747,9 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
               const todayGan = todayRecs.reduce((a, r) => {
                 const v = vehicles.find(vv => vv.id === r.vehicle_id);
                 const ownerPct = v ? Number(v.owner_pct) : 100;
+                // r.ganancia = 60% of neto (before expenses split)
+                // For own: full ganancia is mine
+                // For third: ganancia * my% is mine (expenses already deducted in vStats)
                 return a + (v && v.type === "third" ? Number(r.ganancia) * ownerPct / 100 : Number(r.ganancia));
               }, 0);
               const cargaron = [...new Set(todayRecs.map(r => r.driver_id))].length;
@@ -874,6 +881,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
                     {v.records.map(r => {
                       const ownerPct = Number(v.owner_pct) || 100;
                       const gananciaBruta = Number(r.ganancia);
+                      // For own: full ganancia. For third: my % of ganancia
                       const myGain = v.type === "own" ? gananciaBruta : (gananciaBruta * ownerPct / 100);
                       return (
                         <div key={r.id} style={{ background: C.bg, borderRadius: 10, padding: 10, marginBottom: 8 }}>
@@ -2017,7 +2025,10 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
     const gastosMec = exps.reduce((a, e) => a + Number(e.amount), 0);
     const ownerPct = Number(v.owner_pct) || 100;
     const gananciaBruta = neto - totalChofer;
-    const ganancia = (v.type === "own" ? gananciaBruta : gananciaBruta * ownerPct / 100) - gastosMec;
+    // Correct: deduct expenses from ganancia bruta first, then apply percentage
+    const ganancia = v.type === "own"
+      ? gananciaBruta - gastosMec
+      : (gananciaBruta - gastosMec) * ownerPct / 100;
     return { ...v, dias, facturado, combustible, neto, gastosMec, ganancia, totalChofer, otrosGastos: gastosMec,
       promFact: dias > 0 ? facturado / dias : 0,
       promComb: dias > 0 ? combustible / dias : 0,
@@ -2624,3 +2635,4 @@ function ImgUpload({ preview, label, onChange }) {
     </div>
   );
 }
+
