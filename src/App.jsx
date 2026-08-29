@@ -2017,7 +2017,7 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
     const ownerPct = Number(v.owner_pct) || 100;
     const gananciaBruta = neto - totalChofer;
     const ganancia = (v.type === "own" ? gananciaBruta : gananciaBruta * ownerPct / 100) - gastosMec;
-    return { ...v, dias, facturado, combustible, neto, gastosMec, ganancia,
+    return { ...v, dias, facturado, combustible, neto, gastosMec, ganancia, totalChofer, otrosGastos: gastosMec,
       promFact: dias > 0 ? facturado / dias : 0,
       promComb: dias > 0 ? combustible / dias : 0,
       promGan: dias > 0 ? ganancia / dias : 0,
@@ -2271,14 +2271,16 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
           {(() => {
             const thirdVehicles = vStats.filter(v => v.type === "third");
             const totalJuan = thirdVehicles.reduce((a, v) => {
-              const netoReal = v.facturado - v.combustible - v.otrosGastos;
-              const gananciaBruta = netoReal - v.totalChofer;
-              return a + gananciaBruta * (Number(v.owner_pct) / 100);
+              const neto = v.facturado - v.combustible;
+              const gananciaOwner = neto - v.totalChofer;
+              const baseRepartir = gananciaOwner - v.otrosGastos;
+              return a + baseRepartir * (Number(v.owner_pct) / 100);
             }, 0);
             const totalMio = thirdVehicles.reduce((a, v) => {
-              const netoReal = v.facturado - v.combustible - v.otrosGastos;
-              const gananciaBruta = netoReal - v.totalChofer;
-              return a + gananciaBruta * ((100 - Number(v.owner_pct)) / 100);
+              const neto = v.facturado - v.combustible;
+              const gananciaOwner = neto - v.totalChofer;
+              const baseRepartir = gananciaOwner - v.otrosGastos;
+              return a + baseRepartir * ((100 - Number(v.owner_pct)) / 100);
             }, 0);
             return (
               <div style={{ background: C.hi, borderRadius: 14, padding: 14, marginBottom: 16, border: "1px solid " + C.border }}>
@@ -2303,9 +2305,14 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
             // Facturado - Combustible - Gastos mec = Neto real
             // Neto real - Chofer % = Ganancia bruta
             // Ganancia bruta * owner_pct% = Lo que le toca al dueño del auto
-            const netoReal = v.facturado - v.combustible - v.otrosGastos;
-            const gananciaBruta = netoReal - v.totalChofer;
-            const ownerGain = gananciaBruta * (Number(v.owner_pct) / 100);
+            // Correcto: Facturado - Combustible = Neto
+            // Neto * 40% = Chofer / Neto * 60% = Ganancia bruta
+            // Ganancia bruta - Gastos mec = Base para repartir
+            // Base * owner_pct% = Lo del dueño del auto
+            const neto = v.facturado - v.combustible;
+            const gananciaOwner = neto - v.totalChofer; // 60% del neto
+            const baseRepartir = gananciaOwner - v.otrosGastos;
+            const ownerGain = baseRepartir * (Number(v.owner_pct) / 100);
             return (
               <div key={v.id} style={{ ...card, padding: 14, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -2322,9 +2329,9 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
                   <div><div style={{ color: C.muted }}>Turnos</div><div style={{ color: C.white, fontWeight: 600 }}>{v.dias}</div></div>
                   <div><div style={{ color: C.muted }}>Facturado</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(v.facturado)}</div></div>
                   <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(v.combustible)}</div></div>
+                  <div><div style={{ color: C.muted }}>Neto</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(neto)}</div></div>
                   <div><div style={{ color: C.muted }}>Gastos mec.</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(v.otrosGastos)}</div></div>
-                  <div><div style={{ color: C.muted }}>Neto real</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(netoReal)}</div></div>
-                  <div><div style={{ color: C.muted }}>Ganancia bruta</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(gananciaBruta)}</div></div>
+                  <div><div style={{ color: C.muted }}>Base a repartir</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(baseRepartir)}</div></div>
                 </div>
                 <button onClick={() => {
                   const lines = [
@@ -2336,10 +2343,11 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
                     "• Turnos trabajados: " + v.dias,
                     "• Facturado total: " + fmt(v.facturado),
                     "• Combustible: " + fmt(v.combustible),
-                    v.otrosGastos > 0 ? "• Gastos mecánicos: " + fmt(v.otrosGastos) : null,
-                    "• Neto: " + fmt(netoReal),
-                    "• Chofer (" + (100 - Number(v.owner_pct)) + "% restante): " + fmt(v.totalChofer),
-                    "• Ganancia bruta: " + fmt(gananciaBruta),
+                    "• Neto: " + fmt(neto),
+                    "• Chofer (40%): " + fmt(v.totalChofer),
+                    "• Ganancia del auto: " + fmt(gananciaOwner),
+                    v.otrosGastos > 0 ? "• Gastos mecánicos: -" + fmt(v.otrosGastos) : null,
+                    "• Base a repartir: " + fmt(baseRepartir),
                     "",
                     "Tu parte (" + v.owner_pct + "%): *" + fmt(ownerGain) + "*",
                     "",
