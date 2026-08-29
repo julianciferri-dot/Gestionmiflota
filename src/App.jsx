@@ -2345,8 +2345,7 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
                     "",
                     "Cualquier consulta avisame 👍",
                   ].filter(l => l !== null);
-                  window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("
-")), "_blank");
+                  window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
                 }} style={{ width: "100%", background: "#25d366", border: "none", borderRadius: 12, padding: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                   📲 Enviar resumen por WhatsApp
                 </button>
