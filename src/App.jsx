@@ -2286,13 +2286,15 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
               const neto = v.facturado - v.combustible;
               const gananciaOwner = neto - v.totalChofer;
               const baseRepartir = gananciaOwner - v.otrosGastos;
-              return a + baseRepartir * (Number(v.owner_pct) / 100);
+              // Juan tiene el owner_pct restante (75%)
+              return a + baseRepartir * ((100 - Number(v.owner_pct)) / 100);
             }, 0);
             const totalMio = thirdVehicles.reduce((a, v) => {
               const neto = v.facturado - v.combustible;
               const gananciaOwner = neto - v.totalChofer;
               const baseRepartir = gananciaOwner - v.otrosGastos;
-              return a + baseRepartir * ((100 - Number(v.owner_pct)) / 100);
+              // Yo tengo el owner_pct (25%)
+              return a + baseRepartir * (Number(v.owner_pct) / 100);
             }, 0);
             return (
               <div style={{ background: C.hi, borderRadius: 14, padding: 14, marginBottom: 16, border: "1px solid " + C.border }}>
@@ -2324,7 +2326,8 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
             const neto = v.facturado - v.combustible;
             const gananciaOwner = neto - v.totalChofer; // 60% del neto
             const baseRepartir = gananciaOwner - v.otrosGastos;
-            const ownerGain = baseRepartir * (Number(v.owner_pct) / 100);
+            // Juan tiene el % restante (75%), yo tengo owner_pct (25%)
+            const ownerGain = baseRepartir * ((100 - Number(v.owner_pct)) / 100);
             return (
               <div key={v.id} style={{ ...card, padding: 14, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -2361,7 +2364,7 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
                     v.otrosGastos > 0 ? "• Gastos mecánicos: -" + fmt(v.otrosGastos) : null,
                     "• Base a repartir: " + fmt(baseRepartir),
                     "",
-                    "Tu parte (" + v.owner_pct + "%): *" + fmt(ownerGain) + "*",
+                    "Tu parte (" + (100 - Number(v.owner_pct)) + "%): *" + fmt(ownerGain) + "*",
                     "",
                     "Cualquier consulta avisame 👍",
                   ].filter(l => l !== null);
