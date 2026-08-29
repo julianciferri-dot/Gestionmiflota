@@ -47,7 +47,6 @@ const DEFAULT_VEHICLES = [
   { id: "v5", name: "Fiat Cronos AH692DD", type: "third", owner_pct: 25 },
   { id: "v6", name: "Nissan Versa AC432BM", type: "third", owner_pct: 25 },
   { id: "v7", name: "Toyota Corolla NAA803", type: "third", owner_pct: 25 },
-  { id: "v8", name: "Volkswagen Gol Trend AC387NY", type: "third", owner_pct: 30 },
 ];
 
 const fmt = (n) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n || 0);
@@ -2263,17 +2262,55 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
         📊 Exportar a Excel (CSV)
       </button>
 
-      {/* WhatsApp para dueños de autos terceros */}
+      {/* Resumen autos de terceros */}
       {vStats.filter(v => v.type === "third").length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>📲 Resumen para dueños de autos</div>
+          <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>🤝 Autos de terceros</div>
+
+          {/* Totales Juan vs Yo */}
+          {(() => {
+            const thirdVehicles = vStats.filter(v => v.type === "third");
+            const totalJuan = thirdVehicles.reduce((a, v) => {
+              const netoReal = v.facturado - v.combustible - v.otrosGastos;
+              const gananciaBruta = netoReal - v.totalChofer;
+              return a + gananciaBruta * (Number(v.owner_pct) / 100);
+            }, 0);
+            const totalMio = thirdVehicles.reduce((a, v) => {
+              const netoReal = v.facturado - v.combustible - v.otrosGastos;
+              const gananciaBruta = netoReal - v.totalChofer;
+              return a + gananciaBruta * ((100 - Number(v.owner_pct)) / 100);
+            }, 0);
+            return (
+              <div style={{ background: C.hi, borderRadius: 14, padding: 14, marginBottom: 16, border: "1px solid " + C.border }}>
+                <div style={{ fontSize: 10, color: C.accent, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>Distribución de ganancias</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div style={{ background: C.bg, borderRadius: 10, padding: 12, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>Le corresponde a él</div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: "#4ade80" }}>{fmt(totalJuan)}</div>
+                  </div>
+                  <div style={{ background: C.bg, borderRadius: 10, padding: 12, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, color: C.muted, marginBottom: 4 }}>Me queda a mí</div>
+                    <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: C.accent }}>{fmt(totalMio)}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div style={{ fontSize: 10, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 12 }}>📲 Enviar resumen por auto</div>
           {vStats.filter(v => v.type === "third").map(v => {
-            const ownerGain = v.gananciaBase; // 75% of ganancia bruta goes to owner
+            // Correct calculation:
+            // Facturado - Combustible - Gastos mec = Neto real
+            // Neto real - Chofer % = Ganancia bruta
+            // Ganancia bruta * owner_pct% = Lo que le toca al dueño del auto
+            const netoReal = v.facturado - v.combustible - v.otrosGastos;
+            const gananciaBruta = netoReal - v.totalChofer;
+            const ownerGain = gananciaBruta * (Number(v.owner_pct) / 100);
             return (
               <div key={v.id} style={{ ...card, padding: 14, marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: C.accent }}>🤝 TERCERO · {v.owner_pct}% tuyo</div>
+                    <div style={{ fontSize: 10, color: C.accent }}>🤝 TERCERO · {v.owner_pct}% suyo</div>
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{v.name}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -2281,10 +2318,13 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
                     <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 18, fontWeight: 800, color: "#4ade80" }}>{fmt(ownerGain)}</div>
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, fontSize: 11, marginBottom: 12 }}>
-                  <div><div style={{ color: C.muted }}>Días</div><div style={{ color: C.white, fontWeight: 600 }}>{v.dias}</div></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 11, marginBottom: 12 }}>
+                  <div><div style={{ color: C.muted }}>Turnos</div><div style={{ color: C.white, fontWeight: 600 }}>{v.dias}</div></div>
                   <div><div style={{ color: C.muted }}>Facturado</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(v.facturado)}</div></div>
                   <div><div style={{ color: C.muted }}>Combustible</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(v.combustible)}</div></div>
+                  <div><div style={{ color: C.muted }}>Gastos mec.</div><div style={{ color: C.red, fontWeight: 600 }}>{fmt(v.otrosGastos)}</div></div>
+                  <div><div style={{ color: C.muted }}>Neto real</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(netoReal)}</div></div>
+                  <div><div style={{ color: C.muted }}>Ganancia bruta</div><div style={{ color: C.white, fontWeight: 600 }}>{fmt(gananciaBruta)}</div></div>
                 </div>
                 <button onClick={() => {
                   const lines = [
@@ -2293,16 +2333,20 @@ function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
                     "📅 *" + periodLabel + "*",
                     "🚘 *" + v.name + "*",
                     "",
-                    "• Días trabajados: " + v.dias,
+                    "• Turnos trabajados: " + v.dias,
                     "• Facturado total: " + fmt(v.facturado),
                     "• Combustible: " + fmt(v.combustible),
-                    "• Neto: " + fmt(v.neto),
+                    v.otrosGastos > 0 ? "• Gastos mecánicos: " + fmt(v.otrosGastos) : null,
+                    "• Neto: " + fmt(netoReal),
+                    "• Chofer (" + (100 - Number(v.owner_pct)) + "% restante): " + fmt(v.totalChofer),
+                    "• Ganancia bruta: " + fmt(gananciaBruta),
                     "",
                     "Tu parte (" + v.owner_pct + "%): *" + fmt(ownerGain) + "*",
                     "",
                     "Cualquier consulta avisame 👍",
-                  ];
-                  window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
+                  ].filter(l => l !== null);
+                  window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("
+")), "_blank");
                 }} style={{ width: "100%", background: "#25d366", border: "none", borderRadius: 12, padding: 12, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                   📲 Enviar resumen por WhatsApp
                 </button>
