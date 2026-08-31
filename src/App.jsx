@@ -108,7 +108,7 @@ export default function App() {
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [d, v, r, e, o, m, vk, t] = await Promise.all([
+      const [d, v, r, e, o, m, vk, t, cfg] = await Promise.all([
         db.get("drivers").catch(() => []),
         db.get("vehicles").catch(() => []),
         db.getPaginated("records", 2000).catch(() => []),
@@ -117,6 +117,7 @@ export default function App() {
         db.get("maintenance").catch(() => []),
         db.get("vehicle_km").catch(() => []),
         db.get("turnos").catch(() => []),
+        db.get("config").catch(() => []),
       ]);
       setDrivers(d || []);
       if (!v || v.length === 0) {
@@ -129,6 +130,10 @@ export default function App() {
       setMaintenance(m || []);
       setVehicleKm(vk || []);
       setTurnosDB(t || []);
+      if (cfg && cfg.length > 0) {
+        const pinRow = cfg.find(c => c.key === "owner_pin");
+        if (pinRow) setOwnerPinState(pinRow.value);
+      }
     } catch (err) { console.error(err); }
     setLoading(false);
   };
