@@ -1691,18 +1691,25 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
     return days;
   };
 
-  const [weekStart, setWeekStart] = useState(() => {
-    return localStorage.getItem(WEEK_KEY) || weekOf(arDate());
-  });
+  const [weekStart, setWeekStart] = useState(() => localStorage.getItem(WEEK_KEY) || weekOf(arDate()));
   const [editingCell, setEditingCell] = useState(null);
-  const [view, setView] = useState("planilla"); // planilla | template | cards
-  const [savingCell, setSavingCell] = useState(null);
+  const [view, setView] = useState("planilla");
+  const [saving, setSaving] = useState(false);
+  const today = arDate();
+  const dayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+  const availableWeeks = (() => {
+    const weeksSet = new Set();
+    turnosDB.filter(t => !t.is_template && t.day).forEach(t => weeksSet.add(weekOf(t.day)));
+    for (let i = -2; i <= 6; i++) {
+      const d = new Date();
+      d.setDate(d.getDate() + i * 7);
+      weeksSet.add(weekOf(d.toISOString().split("T")[0]));
+    }
+    return [...weeksSet].sort().reverse();
+  })();
 
   const days = getWeekDays(weekStart);
-  const dayLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-  const today = arDate();
-
-  // Filter turnosDB for current week and template
   const weekTurnos = turnosDB.filter(t => !t.is_template && t.day && days.includes(t.day));
   const templateTurnos = turnosDB.filter(t => t.is_template);
 
@@ -1716,12 +1723,24 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
     return t ? drivers.find(d => d.id === t.driver_id) : null;
   };
 
+  // Drivers already assigned in a given context (excluding current slot)
+  const getAssignedDriversForDay = (day, excludeVehicleId, excludeShift) => {
+    return new Set(weekTurnos
+      .filter(t => t.day === day && !(t.vehicle_id === excludeVehicleId && t.shift === excludeShift))
+      .map(t => t.driver_id));
+  };
+
+  const getAssignedDriversTemplate = (excludeVehicleId, excludeShift) => {
+    return new Set(templateTurnos
+      .filter(t => !(t.vehicle_id === excludeVehicleId && t.shift === excludeShift))
+      .map(t => t.driver_id));
+  };
+
   const assign = async (vehicleId, shift, day, driverId, isTemplate = false) => {
     setEditingCell(null);
-    setSavingCell(`${vehicleId}_${shift}_${day || "tpl"}`);
+    setSaving(true);
     try {
       if (isTemplate) {
-        // Remove existing template entry
         const existing = templateTurnos.find(t => t.vehicle_id === vehicleId && t.shift === shift);
         if (existing) await db.delete("turnos", existing.id);
         if (driverId) {
@@ -1742,69 +1761,68 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
           setTurnosDB(prev => prev.filter(t => !(t.vehicle_id === vehicleId && t.shift === shift && t.day === day && !t.is_template)));
         }
       }
-    } catch (e) { console.error(e); }
-    setSavingCell(null);
+    } catch(e) { console.error(e); }
+    setSaving(false);
   };
 
   const applyTemplate = async () => {
-    if (!window.confirm("¿Aplicar la plantilla a la semana del " + weekStart + "? Esto sobreescribe los turnos actuales de esa semana.")) return;
-    // Delete existing week turnos
-    const existing = weekTurnos;
-    await Promise.all(existing.map(t => db.delete("turnos", t.id)));
-    // Create new ones from template for each day
+    if (templateTurnos.length === 0) { alert("No hay choferes fijos configurados"); return; }
+    if (!window.confirm("¿Aplicar plantilla fija a la semana del " + weekStart + "?")) return;
+    setSaving(true);
+    await Promise.all(weekTurnos.map(t => db.delete("turnos", t.id)));
     const newTurnos = [];
     for (const tpl of templateTurnos) {
       for (const day of days) {
-        const newT = { id: Date.now().toString() + Math.random(), vehicle_id: tpl.vehicle_id, shift: tpl.shift, day, driver_id: tpl.driver_id, is_template: false };
+        const newT = { id: Date.now().toString() + Math.random().toString(36).slice(2), vehicle_id: tpl.vehicle_id, shift: tpl.shift, day, driver_id: tpl.driver_id, is_template: false };
         await db.insert("turnos", newT);
         newTurnos.push(newT);
       }
     }
     setTurnosDB(prev => [...prev.filter(t => t.is_template || !days.includes(t.day)), ...newTurnos]);
+    setSaving(false);
   };
 
-  // Count stats
   const totalSlots = vehicles.length * 2 * 7;
   const assignedSlots = weekTurnos.length;
-  const emptySlots = totalSlots - assignedSlots;
-
-  const assignedToday = new Set(
-    weekTurnos.filter(t => t.day === today).map(t => t.driver_id).filter(Boolean)
-  );
+  const assignedToday = new Set(weekTurnos.filter(t => t.day === today).map(t => t.driver_id));
   const freeDrivers = drivers.filter(d => d.active !== false && !assignedToday.has(d.id));
 
   const sendWhatsApp = () => {
     const lines = ["🚗 *Turnos semana del " + weekStart + "*", ""];
     vehicles.forEach(v => {
+      const hasAny = days.some(day => getAssigned(v.id, "dia", day) || getAssigned(v.id, "noche", day));
+      if (!hasAny) return;
       lines.push("*" + v.name + "*");
       days.forEach((day, i) => {
         const dia = getAssigned(v.id, "dia", day);
         const noche = getAssigned(v.id, "noche", day);
-        if (dia || noche) {
-          lines.push(dayLabels[i] + " " + day.slice(8) + ": ☀️ " + (dia ? dia.name : "—") + " 🌙 " + (noche ? noche.name : "—"));
-        }
+        if (dia || noche) lines.push(dayLabels[i] + " " + day.slice(8) + ": ☀️ " + (dia ? dia.name.split(" ")[0] : "—") + " 🌙 " + (noche ? noche.name.split(" ")[0] : "—"));
       });
       lines.push("");
     });
     window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
   };
 
+  const DriverSelect = ({ vehicleId, shift, day, assigned, isTemplate }) => {
+    const excludedIds = isTemplate
+      ? getAssignedDriversTemplate(vehicleId, shift)
+      : getAssignedDriversForDay(day, vehicleId, shift);
+    const available = drivers.filter(d => d.active !== false && (!excludedIds.has(d.id) || d.id === assigned?.id));
+    return (
+      <select autoFocus
+        onChange={e => assign(vehicleId, shift, day, e.target.value || null, isTemplate)}
+        defaultValue={assigned?.id || ""}
+        style={{ fontSize: 11, background: C.surface, border: "1px solid " + C.accent, borderRadius: 6, color: C.text, padding: "4px", width: "100%", fontFamily: "inherit" }}>
+        <option value="">— Sin asignar</option>
+        {available.map(d => (
+          <option key={d.id} value={d.id}>{d.name}</option>
+        ))}
+      </select>
+    );
+  };
+
   return (
     <div>
-      {/* Week selector */}
-      <div style={{ marginBottom: 12 }}>
-        <label style={lbl}>Semana</label>
-        <input type="date" value={weekStart} onChange={e => {
-          setWeekStart(e.target.value);
-          localStorage.setItem(WEEK_KEY, e.target.value);
-        }} style={{ ...inp, marginBottom: 10 }} />
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setView("planilla")} style={{ flex: 1, background: view === "planilla" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "8px", color: view === "planilla" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📋 Planilla</button>
-          <button onClick={() => setView("template")} style={{ flex: 1, background: view === "template" ? "#14b8a6" : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "8px", color: view === "template" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📌 Fijos</button>
-          <button onClick={() => setView("cards")} style={{ flex: 1, background: view === "cards" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "8px", color: view === "cards" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>🗂️ Tarjetas</button>
-        </div>
-      </div>
-
       {/* Summary */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
         <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid #4ade8044", textAlign: "center" }}>
@@ -1813,7 +1831,7 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
         </div>
         <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid " + C.red + "44", textAlign: "center" }}>
           <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Vacíos</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: C.red, fontFamily: "'Syne', sans-serif" }}>{emptySlots}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.red, fontFamily: "'Syne', sans-serif" }}>{totalSlots - assignedSlots}</div>
         </div>
         <div style={{ background: C.surface, borderRadius: 12, padding: 12, border: "1px solid " + C.teal + "44", textAlign: "center" }}>
           <div style={{ fontSize: 9, color: C.muted, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Libres hoy</div>
@@ -1826,25 +1844,37 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
         <div style={{ ...card, marginBottom: 12, borderColor: C.teal + "33", padding: 12 }}>
           <div style={{ fontSize: 10, color: C.teal, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>👤 Sin turno hoy</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {freeDrivers.map(d => (
-              <span key={d.id} style={{ background: C.hi, borderRadius: 8, padding: "4px 10px", fontSize: 11, color: C.teal, border: "1px solid " + C.teal + "33" }}>{d.name}</span>
-            ))}
+            {freeDrivers.map(d => <span key={d.id} style={{ background: C.hi, borderRadius: 8, padding: "4px 10px", fontSize: 11, color: C.teal, border: "1px solid " + C.teal + "33" }}>{d.name}</span>)}
           </div>
         </div>
       )}
 
-      {/* TEMPLATE VIEW */}
-      {view === "template" && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ ...card, borderColor: C.teal + "44", marginBottom: 12 }}>
-            <div style={{ fontSize: 10, color: C.teal, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>📌 Choferes fijos por auto</div>
-            <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Configurá los choferes predeterminados. Luego podés aplicarlos a cualquier semana con un toque.</div>
-            <button onClick={applyTemplate} style={{ ...btn(C.teal, "#000"), fontSize: 13, marginBottom: 0 }}>
-              ✓ Aplicar plantilla a semana del {weekStart}
+      {/* View selector */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <button onClick={() => setView("fijos")} style={{ flex: 1, background: view === "fijos" ? C.teal : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "9px", color: view === "fijos" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📌 Fijos</button>
+        <button onClick={() => setView("planilla")} style={{ flex: 1, background: view === "planilla" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "9px", color: view === "planilla" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>📋 Planilla</button>
+        <button onClick={() => setView("cards")} style={{ flex: 1, background: view === "cards" ? C.accent : C.surface, border: "1px solid " + C.border, borderRadius: 10, padding: "9px", color: view === "cards" ? "#000" : C.text, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>🗂️ Tarjetas</button>
+      </div>
+
+      {/* FIJOS VIEW */}
+      {view === "fijos" && (
+        <div>
+          <div style={{ ...card, borderColor: C.teal + "44", marginBottom: 12, padding: 12 }}>
+            <div style={{ fontSize: 11, color: C.teal, marginBottom: 4, fontWeight: 600 }}>📌 Choferes fijos por auto</div>
+            <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Configurá los choferes predeterminados y luego aplicalos a cualquier semana.</div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={lbl}>Aplicar a semana</label>
+              <select value={weekStart} onChange={e => { setWeekStart(e.target.value); localStorage.setItem(WEEK_KEY, e.target.value); }} style={{ ...inp, marginBottom: 10 }}>
+                {availableWeeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
+              </select>
+            </div>
+            <button onClick={applyTemplate} disabled={saving} style={{ ...btn(C.teal, "#000"), fontSize: 13 }}>
+              {saving ? "Aplicando..." : "✓ Aplicar plantilla a esta semana"}
             </button>
           </div>
           {vehicles.map(v => (
             <div key={v.id} style={{ ...card, padding: 12, marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent, marginBottom: 2 }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO"}</div>
               <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white, marginBottom: 10 }}>{v.name}</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                 {["dia", "noche"].map(shift => {
@@ -1854,17 +1884,9 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
                     <div key={shift} style={{ background: C.bg, borderRadius: 10, padding: 10, border: "1px solid " + (assigned ? (shift === "dia" ? "#f59e0b44" : "#1e3a6e88") : C.border) }}>
                       <div style={{ fontSize: 10, color: C.muted, marginBottom: 6 }}>{shift === "dia" ? "☀️ Día" : "🌙 Noche"}</div>
                       {isEditing ? (
-                        <select autoFocus onChange={e => assign(v.id, shift, null, e.target.value || null, true)}
-                          defaultValue={assigned?.id || ""}
-                          style={{ ...inp, fontSize: 12, padding: "6px" }}>
-                          <option value="">— Sin asignar</option>
-                          {drivers.filter(d => d.active !== false).map(d => (
-                            <option key={d.id} value={d.id}>{d.name}</option>
-                          ))}
-                        </select>
+                        <DriverSelect vehicleId={v.id} shift={shift} day={null} assigned={assigned} isTemplate={true} />
                       ) : (
-                        <div onClick={() => setEditingCell({ vehicleId: v.id, shift, day: "tpl" })}
-                          style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div onClick={() => setEditingCell({ vehicleId: v.id, shift, day: "tpl" })} style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <span style={{ fontSize: 12, color: assigned ? (shift === "dia" ? C.accent : "#93c5fd") : C.muted, fontWeight: assigned ? 600 : 400 }}>
                             {assigned ? assigned.name : "+ Asignar"}
                           </span>
@@ -1882,124 +1904,126 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
 
       {/* PLANILLA VIEW */}
       {view === "planilla" && (
-        <div style={{ overflowX: "auto", marginBottom: 12 }}>
-          <table style={{ borderCollapse: "collapse", fontSize: 10, minWidth: 600 }}>
-            <thead>
-              <tr>
-                <th style={{ background: "#1a2a4a", color: C.white, padding: "8px 10px", textAlign: "left", minWidth: 120, position: "sticky", left: 0, zIndex: 2, fontSize: 10 }}>Vehículo</th>
-                <th style={{ background: "#1a2a4a", color: C.muted, padding: "8px 6px", fontSize: 9, width: 50 }}>Turno</th>
-                {days.map((day, i) => (
-                  <th key={day} style={{ background: day === today ? C.accent + "33" : "#1a2a4a", color: day === today ? C.accent : C.muted, padding: "6px 4px", textAlign: "center", minWidth: 80, fontSize: 9 }}>
-                    {dayLabels[i]}<br/><span style={{ fontSize: 8 }}>{day.slice(5)}</span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {vehicles.map((v, vi) => (
-                ["dia", "noche"].map((shift, si) => {
-                  const isDay = shift === "dia";
-                  return (
-                    <tr key={v.id + shift} style={{ background: vi % 2 === 0 ? "#0a1628" : "#0d1a30" }}>
-                      {si === 0 && (
-                        <td rowSpan={2} style={{ padding: "6px 8px", verticalAlign: "middle", position: "sticky", left: 0, background: vi % 2 === 0 ? "#0a1628" : "#0d1a30", zIndex: 1, borderRight: "1px solid " + C.border }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{v.name.split(" ").slice(0,2).join(" ")}</div>
-                          <div style={{ fontSize: 8, color: v.type === "own" ? C.teal : C.accent }}>{v.name.split(" ").slice(-1)}</div>
-                        </td>
-                      )}
-                      <td style={{ padding: "4px 6px", textAlign: "center", background: isDay ? "#f59e0b22" : "#1e3a6e22", borderRight: "1px solid " + C.border }}>
-                        <span style={{ fontSize: 12 }}>{isDay ? "☀️" : "🌙"}</span>
-                      </td>
-                      {days.map(day => {
-                        const assigned = getAssigned(v.id, shift, day);
-                        const isEditing = editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day;
-                        return (
-                          <td key={day} style={{ padding: 2, textAlign: "center", background: day === today ? (isDay ? "#f59e0b11" : "#1e3a6e22") : "transparent", borderRight: "1px solid " + C.border + "44" }}>
-                            {isEditing ? (
-                              <select autoFocus onChange={e => assign(v.id, shift, day, e.target.value || null)} defaultValue={assigned?.id || ""}
-                                style={{ fontSize: 9, background: C.surface, border: "1px solid " + C.accent, borderRadius: 4, color: C.text, padding: "2px", width: "100%", fontFamily: "inherit" }}>
-                                <option value="">— Libre</option>
-                                {drivers.filter(d => d.active !== false).map(d => (
-                                  <option key={d.id} value={d.id}>{d.name.split(" ")[0] + " " + (d.name.split(" ")[1] || "")}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              <div onClick={() => setEditingCell({ vehicleId: v.id, shift, day })}
-                                style={{ cursor: "pointer", borderRadius: 4, padding: "3px 2px", background: assigned ? (isDay ? "#f59e0b33" : "#1e3a6e55") : "transparent", minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                {assigned ? (
-                                  <span style={{ fontSize: 8, color: isDay ? C.accent : "#93c5fd", fontWeight: 600, lineHeight: 1.2 }}>
-                                    {assigned.name.split(" ")[0]}
-                                  </span>
-                                ) : (
-                                  <span style={{ color: C.border, fontSize: 10 }}>+</span>
-                                )}
-                              </div>
-                            )}
+        <div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={lbl}>Semana</label>
+            <select value={weekStart} onChange={e => { setWeekStart(e.target.value); localStorage.setItem(WEEK_KEY, e.target.value); }} style={inp}>
+              {availableWeeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
+            </select>
+          </div>
+          <div style={{ overflowX: "auto", marginBottom: 12 }}>
+            <table style={{ borderCollapse: "collapse", fontSize: 10, minWidth: 600 }}>
+              <thead>
+                <tr>
+                  <th style={{ background: "#1a2a4a", color: C.white, padding: "8px 10px", textAlign: "left", minWidth: 110, position: "sticky", left: 0, zIndex: 2, fontSize: 10 }}>Vehículo</th>
+                  <th style={{ background: "#1a2a4a", color: C.muted, padding: "8px 6px", fontSize: 9, width: 40 }}>Turno</th>
+                  {days.map((day, i) => (
+                    <th key={day} style={{ background: day === today ? C.accent + "33" : "#1a2a4a", color: day === today ? C.accent : C.muted, padding: "6px 4px", textAlign: "center", minWidth: 80, fontSize: 9 }}>
+                      {dayLabels[i]}<br/><span style={{ fontSize: 8 }}>{day.slice(5)}</span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vehicles.map((v, vi) => (
+                  ["dia", "noche"].map((shift, si) => {
+                    const isDay = shift === "dia";
+                    return (
+                      <tr key={v.id + shift} style={{ background: vi % 2 === 0 ? "#0a1628" : "#0d1a30" }}>
+                        {si === 0 && (
+                          <td rowSpan={2} style={{ padding: "6px 8px", verticalAlign: "middle", position: "sticky", left: 0, background: vi % 2 === 0 ? "#0a1628" : "#0d1a30", zIndex: 1, borderRight: "1px solid " + C.border }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{v.name.split(" ").slice(0,2).join(" ")}</div>
+                            <div style={{ fontSize: 8, color: v.type === "own" ? C.teal : C.accent }}>{v.name.split(" ").slice(-1)}</div>
                           </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })
-              ))}
-            </tbody>
-          </table>
+                        )}
+                        <td style={{ padding: "4px 6px", textAlign: "center", background: isDay ? "#f59e0b22" : "#1e3a6e22", borderRight: "1px solid " + C.border }}>
+                          <span style={{ fontSize: 12 }}>{isDay ? "☀️" : "🌙"}</span>
+                        </td>
+                        {days.map(day => {
+                          const assigned = getAssigned(v.id, shift, day);
+                          const isEditing = editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day;
+                          return (
+                            <td key={day} style={{ padding: 2, textAlign: "center", background: day === today ? (isDay ? "#f59e0b11" : "#1e3a6e22") : "transparent", borderRight: "1px solid " + C.border + "44" }}>
+                              {isEditing ? (
+                                <DriverSelect vehicleId={v.id} shift={shift} day={day} assigned={assigned} isTemplate={false} />
+                              ) : (
+                                <div onClick={() => setEditingCell({ vehicleId: v.id, shift, day })}
+                                  style={{ cursor: "pointer", borderRadius: 4, padding: "3px 2px", background: assigned ? (isDay ? "#f59e0b33" : "#1e3a6e55") : "transparent", minHeight: 22, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  {assigned ? (
+                                    <span style={{ fontSize: 8, color: isDay ? C.accent : "#93c5fd", fontWeight: 600, lineHeight: 1.2 }}>{assigned.name.split(" ")[0]}</span>
+                                  ) : (
+                                    <span style={{ color: C.border, fontSize: 10 }}>+</span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* CARDS VIEW */}
-      {view === "cards" && vehicles.map(v => (
-        <div key={v.id} style={{ ...card, padding: 12, marginBottom: 10 }}>
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO"}</div>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{v.name}</div>
+      {view === "cards" && (
+        <div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={lbl}>Semana</label>
+            <select value={weekStart} onChange={e => { setWeekStart(e.target.value); localStorage.setItem(WEEK_KEY, e.target.value); }} style={inp}>
+              {availableWeeks.map(w => <option key={w} value={w}>Semana del {w}</option>)}
+            </select>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
-            {days.map((day, i) => (
-              <div key={day} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 8, color: day === today ? C.accent : C.muted, marginBottom: 2 }}>{dayLabels[i]}</div>
-                {["dia","noche"].map(shift => {
-                  const assigned = getAssigned(v.id, shift, day);
-                  return (
-                    <div key={shift} onClick={() => setEditingCell(editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day ? null : { vehicleId: v.id, shift, day })}
-                      style={{ background: assigned ? (shift === "dia" ? "#f59e0b33" : "#1e3a6e55") : C.hi, borderRadius: 4, padding: "3px 2px", marginBottom: 2, cursor: "pointer", minHeight: 20 }}>
-                      {editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day ? (
-                        <select autoFocus onChange={e => assign(v.id, shift, day, e.target.value || null)} defaultValue={assigned?.id || ""}
-                          style={{ fontSize: 8, background: C.surface, border: "none", color: C.text, width: "100%", fontFamily: "inherit" }}>
-                          <option value="">—</option>
-                          {drivers.filter(d => d.active !== false).map(d => (
-                            <option key={d.id} value={d.id}>{d.name.split(" ")[0]}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span style={{ fontSize: 7, color: assigned ? (shift === "dia" ? C.accent : "#93c5fd") : C.muted }}>
-                          {assigned ? assigned.name.split(" ")[0] : shift === "dia" ? "☀️" : "🌙"}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+          {vehicles.map(v => (
+            <div key={v.id} style={{ ...card, padding: 12, marginBottom: 10 }}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 10, color: v.type === "own" ? C.teal : C.accent }}>{v.type === "own" ? "🚗 PROPIO" : "🤝 TERCERO"}</div>
+                <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 700, color: C.white }}>{v.name}</div>
               </div>
-            ))}
-          </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                {days.map((day, i) => (
+                  <div key={day} style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 8, color: day === today ? C.accent : C.muted, marginBottom: 2 }}>{dayLabels[i]}</div>
+                    {["dia","noche"].map(shift => {
+                      const assigned = getAssigned(v.id, shift, day);
+                      const isEditing = editingCell?.vehicleId === v.id && editingCell?.shift === shift && editingCell?.day === day;
+                      return (
+                        <div key={shift} style={{ background: assigned ? (shift === "dia" ? "#f59e0b33" : "#1e3a6e55") : C.hi, borderRadius: 4, padding: "3px 2px", marginBottom: 2, cursor: "pointer", minHeight: 20 }}
+                          onClick={() => setEditingCell(isEditing ? null : { vehicleId: v.id, shift, day })}>
+                          {isEditing ? (
+                            <DriverSelect vehicleId={v.id} shift={shift} day={day} assigned={assigned} isTemplate={false} />
+                          ) : (
+                            <span style={{ fontSize: 7, color: assigned ? (shift === "dia" ? C.accent : "#93c5fd") : C.muted }}>
+                              {assigned ? assigned.name.split(" ")[0] : shift === "dia" ? "☀️" : "🌙"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-        <button onClick={sendWhatsApp} style={{ ...btn("#25d366", "#fff"), flex: 2, fontSize: 13 }}>
-          📲 Compartir por WhatsApp
-        </button>
+        <button onClick={sendWhatsApp} style={{ ...btn("#25d366", "#fff"), flex: 2, fontSize: 13 }}>📲 Compartir por WhatsApp</button>
         <button onClick={async () => {
           if (!window.confirm("¿Limpiar todos los turnos de esta semana?")) return;
           await Promise.all(weekTurnos.map(t => db.delete("turnos", t.id)));
           setTurnosDB(prev => prev.filter(t => t.is_template || !days.includes(t.day)));
-        }} style={{ ...btn(C.hi, C.muted), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>
-          🗑️ Limpiar semana
-        </button>
+        }} style={{ ...btn(C.hi, C.muted), flex: 1, border: "1px solid " + C.border, fontSize: 13 }}>🗑️ Limpiar</button>
       </div>
     </div>
   );
 }
+
 
 function ResumeTab({ records, vehicles, drivers, expenses, weeks, months }) {
   const [period, setPeriod] = useState("semana");
@@ -2640,3 +2664,4 @@ function ImgUpload({ preview, label, onChange }) {
 }
 
 // Sat Aug 29 20:51:46 UTC 2026
+// updated 1788136195
