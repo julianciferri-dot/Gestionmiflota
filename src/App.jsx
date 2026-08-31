@@ -74,7 +74,7 @@ const toBase64 = (file) => new Promise((res, rej) => {
   r.readAsDataURL(file);
 });
 
-const OWNER_PIN = "1803";
+const OWNER_PIN = "2038";
 const getOwnerPin = () => OWNER_PIN;
 
 const C = {
@@ -2671,3 +2671,5 @@ function ImgUpload({ preview, label, onChange }) {
 // Sat Aug 29 20:51:46 UTC 2026
 // updated 1788136195
 // 1788139010
+// v1788139167
+// pin updated
