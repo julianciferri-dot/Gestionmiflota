@@ -97,6 +97,7 @@ export default function App() {
   const [maintenance, setMaintenance] = useState([]);
   const [vehicleKm, setVehicleKm] = useState([]);
   const [turnosDB, setTurnosDB] = useState([]);
+  const [turnosLoaded, setTurnosLoaded] = useState(false);
   const [ownerPin, setOwnerPinState] = useState(getOwnerPin());
   const [view, setView] = useState("login");
   const [currentDriver, setCurrentDriver] = useState(null);
@@ -130,6 +131,7 @@ export default function App() {
       setMaintenance(m || []);
       setVehicleKm(vk || []);
       setTurnosDB(t || []);
+      setTurnosLoaded(true);
       if (cfg && cfg.length > 0) {
         const pinRow = cfg.find(c => c.key === "owner_pin");
         if (pinRow) setOwnerPinState(pinRow.value);
@@ -1099,7 +1101,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
         )}
 
         {tab === 7 && (
-          <TurnosTab vehicles={vehicles} drivers={drivers} turnosDB={turnosDB} setTurnosDB={setTurnosDB} />
+          <TurnosTab vehicles={vehicles} drivers={drivers} turnosDB={turnosDB} setTurnosDB={setTurnosDB} turnosLoaded={turnosLoaded} />
         )}
 
         {tab === 8 && (
@@ -1682,7 +1684,7 @@ function VehicleAddForm({ vehicles, setVehicles, showToast }) {
   );
 }
 
-function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
+function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB, turnosLoaded }) {
   const WEEK_KEY = "flota_turnos_week";
 
   const getWeekDays = (startDate) => {
@@ -1910,6 +1912,9 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
       {/* PLANILLA VIEW */}
       {view === "planilla" && (
         <div>
+          {!turnosLoaded && (
+            <div style={{ textAlign: "center", padding: 20, color: C.muted, fontSize: 13 }}>Cargando turnos...</div>
+          )}
           <div style={{ marginBottom: 10 }}>
             <label style={lbl}>Semana</label>
             <select value={weekStart} onChange={e => { setWeekStart(e.target.value); localStorage.setItem(WEEK_KEY, e.target.value); }} style={inp}>
@@ -1977,6 +1982,9 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
       {/* CARDS VIEW */}
       {view === "cards" && (
         <div>
+          {!turnosLoaded && (
+            <div style={{ textAlign: "center", padding: 20, color: C.muted, fontSize: 13 }}>Cargando turnos...</div>
+          )}
           <div style={{ marginBottom: 10 }}>
             <label style={lbl}>Semana</label>
             <select value={weekStart} onChange={e => { setWeekStart(e.target.value); localStorage.setItem(WEEK_KEY, e.target.value); }} style={inp}>
