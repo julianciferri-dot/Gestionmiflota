@@ -796,9 +796,11 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
             {(() => {
               const getLatestKm = (vehicleId) => {
                 const stored = localStorage.getItem("flota_km_" + vehicleId);
-                if (stored) return parseInt(stored);
+                const manualKmVal = stored ? parseInt(stored) : 0;
                 const vRecs = records.filter(r => r.vehicle_id === vehicleId && r.km).sort((a, b) => b.date.localeCompare(a.date));
-                return vRecs.length > 0 ? vRecs[0].km : null;
+                const recordKm = vRecs.length > 0 ? Number(vRecs[0].km) : 0;
+                const best = Math.max(manualKmVal, recordKm);
+                return best > 0 ? best : null;
               };
               const alerts = [];
               vehicles.forEach(v => {
@@ -1407,9 +1409,14 @@ function MantenimientoTab({ vehicles, maintenance, setMaintenance, records, show
 
   // Get latest km for each vehicle — manual takes priority, then from records
   const getLatestKm = (vehicleId) => {
-    if (manualKm[vehicleId]) return manualKm[vehicleId];
+    // Get highest km from records (most recent date)
     const vRecs = records.filter(r => r.vehicle_id === vehicleId && r.km).sort((a, b) => b.date.localeCompare(a.date));
-    return vRecs.length > 0 ? vRecs[0].km : null;
+    const recordKm = vRecs.length > 0 ? Number(vRecs[0].km) : 0;
+    // Get manual km
+    const manual = manualKm[vehicleId] ? Number(manualKm[vehicleId]) : 0;
+    // Use the highest value
+    const best = Math.max(recordKm, manual);
+    return best > 0 ? best : null;
   };
 
   const saveManualKm = (vehicleId) => {
@@ -2673,3 +2680,4 @@ function ImgUpload({ preview, label, onChange }) {
 // 1788139010
 // v1788139167
 // pin updated
+// fix-1788666258
