@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 
-// Mi Flota - gestionmiflota.vercel.app
 const SUPA_URL = "https://jlkvrjaojvncwzwzdurx.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impsa3ZyamFvanZuY3d6d3pkdXJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNjAxMjMsImV4cCI6MjA5NDYzNjEyM30.pBKoWOrcqcLog_nOiwYaZeQI_23X2bwe3FVghc71A2o";
 
@@ -1800,19 +1799,35 @@ function TurnosTab({ vehicles, drivers, turnosDB, setTurnosDB }) {
   const freeDrivers = drivers.filter(d => d.active !== false && !assignedToday.has(d.id));
 
   const sendWhatsApp = () => {
-    const lines = ["🚗 *Turnos semana del " + weekStart + "*", ""];
-    vehicles.forEach(v => {
-      const hasAny = days.some(day => getAssigned(v.id, "dia", day) || getAssigned(v.id, "noche", day));
-      if (!hasAny) return;
-      lines.push("*" + v.name + "*");
-      days.forEach((day, i) => {
-        const dia = getAssigned(v.id, "dia", day);
-        const noche = getAssigned(v.id, "noche", day);
-        if (dia || noche) lines.push(dayLabels[i] + " " + day.slice(8) + ": ☀️ " + (dia ? dia.name.split(" ")[0] : "—") + " 🌙 " + (noche ? noche.name.split(" ")[0] : "—"));
+    if (view === "fijos") {
+      // Send template (fixed drivers)
+      const lines = ["🚗 *Choferes fijos por auto*", ""];
+      vehicles.forEach(v => {
+        const dia = getTemplateAssigned(v.id, "dia");
+        const noche = getTemplateAssigned(v.id, "noche");
+        if (!dia && !noche) return;
+        lines.push("*" + v.name + "*");
+        lines.push("☀️ Día: " + (dia ? dia.name : "— Vacío"));
+        lines.push("🌙 Noche: " + (noche ? noche.name : "— Vacío"));
+        lines.push("");
       });
-      lines.push("");
-    });
-    window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
+      window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
+    } else {
+      // Send weekly schedule
+      const lines = ["🚗 *Turnos semana del " + weekStart + "*", ""];
+      vehicles.forEach(v => {
+        const hasAny = days.some(day => getAssigned(v.id, "dia", day) || getAssigned(v.id, "noche", day));
+        if (!hasAny) return;
+        lines.push("*" + v.name + "*");
+        days.forEach((day, i) => {
+          const dia = getAssigned(v.id, "dia", day);
+          const noche = getAssigned(v.id, "noche", day);
+          if (dia || noche) lines.push(dayLabels[i] + " " + day.slice(8) + ": ☀️ " + (dia ? dia.name.split(" ")[0] : "—") + " 🌙 " + (noche ? noche.name.split(" ")[0] : "—"));
+        });
+        lines.push("");
+      });
+      window.open("https://wa.me/?text=" + encodeURIComponent(lines.join("\n")), "_blank");
+    }
   };
 
   const DriverSelect = ({ vehicleId, shift, day, assigned, isTemplate }) => {
@@ -2675,9 +2690,5 @@ function ImgUpload({ preview, label, onChange }) {
   );
 }
 
-// Sat Aug 29 20:51:46 UTC 2026
 // updated 1788136195
-// 1788139010
-// v1788139167
 // pin updated
-// fix-1788666258
