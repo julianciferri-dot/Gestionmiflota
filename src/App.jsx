@@ -32,14 +32,17 @@ const db = {
 // Km más reciente de un auto: gana el dato cargado más tarde (manual o de un chofer), sin importar el dispositivo
 const parseKmCfg = (c) => { const [k, t] = String(c.value).split("|"); return { km: Number(k) || 0, ts: Number(t) || 0 }; };
 const latestKm = (vehicleId, records, vehicleKm) => {
-  const cands = [];
+  // El odómetro no baja: manda el valor manual y, después de él, solo cuentan los km de choferes cargados más tarde y mayores.
+  // Para corregir hacia abajo se usa "Editar km" (lo manual pisa todo lo anterior).
   const cfg = (vehicleKm || []).find(c => c.key === "km_" + vehicleId);
-  if (cfg) { const p = parseKmCfg(cfg); if (p.km > 0) cands.push(p); }
-  records.forEach(r => { if (r.vehicle_id === vehicleId && r.km) cands.push({ km: Number(r.km), ts: Number(r.id) || 0 }); });
-  if (!cands.length) return null;
-  cands.sort((a, b) => b.ts - a.ts);
-  return cands[0].km;
+  const man = cfg ? parseKmCfg(cfg) : { km: 0, ts: 0 };
+  let best = man.km;
+  records.forEach(r => {
+    if (r.vehicle_id === vehicleId && r.km && (Number(r.id) || 0) > man.ts) best = Math.max(best, Number(r.km));
+  });
+  return best > 0 ? best : null;
 };
+
 
 const uploadImg = async (file, path) => {
   const res = await fetch(`${SUPA_URL}/storage/v1/object/Comprobantes/${path}`, {
@@ -2733,3 +2736,5 @@ function ImgUpload({ preview, label, onChange }) {
 // v20261119161721
 
 // v20261119162024
+
+// v20261119162403
