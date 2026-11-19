@@ -29,6 +29,18 @@ const db = {
   delete: (table, id) => supa(`${table}?id=eq.${id}`, "DELETE"),
 };
 
+// Km más reciente de un auto: gana el dato cargado más tarde (manual o de un chofer), sin importar el dispositivo
+const parseKmCfg = (c) => { const [k, t] = String(c.value).split("|"); return { km: Number(k) || 0, ts: Number(t) || 0 }; };
+const latestKm = (vehicleId, records, vehicleKm) => {
+  const cands = [];
+  const cfg = (vehicleKm || []).find(c => c.key === "km_" + vehicleId);
+  if (cfg) { const p = parseKmCfg(cfg); if (p.km > 0) cands.push(p); }
+  records.forEach(r => { if (r.vehicle_id === vehicleId && r.km) cands.push({ km: Number(r.km), ts: Number(r.id) || 0 }); });
+  if (!cands.length) return null;
+  cands.sort((a, b) => b.ts - a.ts);
+  return cands[0].km;
+};
+
 const uploadImg = async (file, path) => {
   const res = await fetch(`${SUPA_URL}/storage/v1/object/Comprobantes/${path}`, {
     method: "POST",
@@ -139,6 +151,26 @@ export default function App() {
   };
 
   useEffect(() => { loadAll(); }, []);
+
+  // Refresco silencioso cada 20s y al volver a la app: sincroniza km, registros, mantenimiento entre dispositivos
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        const [r, m, cfg] = await Promise.all([
+          db.getPaginated("records", 2000),
+          db.get("maintenance"),
+          db.get("config"),
+        ]);
+        if (Array.isArray(r)) setRecords(r);
+        if (Array.isArray(m)) setMaintenance(m);
+        if (Array.isArray(cfg)) setVehicleKm(cfg.filter(c => String(c.key).startsWith("km_")));
+      } catch {}
+    };
+    const iv = setInterval(() => { if (!document.hidden) refresh(); }, 20000);
+    const onVis = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(iv); document.removeEventListener("visibilitychange", onVis); };
+  }, []);
 
   const dName = (id) => drivers.find(d => d.id === id)?.name || id;
   const vName = (id) => vehicles.find(v => v.id === id)?.name || id;
@@ -803,15 +835,7 @@ function OwnerScreen({ drivers, vehicles, records, expenses, dayoffs, setDrivers
 
             {/* ALERTAS DE MANTENIMIENTO */}
             {(() => {
-              const getLatestKm = (vehicleId) => {
-                const stored = localStorage.getItem("flota_km_" + vehicleId);
-                const synced = (vehicleKm || []).find(c => c.key === "km_" + vehicleId);
-                const manualKmVal = Math.max(stored ? parseInt(stored) : 0, synced ? Number(synced.value) : 0);
-                const vRecs = records.filter(r => r.vehicle_id === vehicleId && r.km).sort((a, b) => b.date.localeCompare(a.date));
-                const recordKm = vRecs.reduce((m, r) => Math.max(m, Number(r.km)), 0);
-                const best = Math.max(manualKmVal, recordKm);
-                return best > 0 ? best : null;
-              };
+              const getLatestKm = (vehicleId) => latestKm(vehicleId, records, vehicleKm);
               const alerts = [];
               vehicles.forEach(v => {
                 const km = getLatestKm(v.id);
@@ -1418,26 +1442,17 @@ function MantenimientoTab({ vehicleKm = [], setVehicleKm, vehicles, maintenance,
   const [kmInput, setKmInput] = useState("");
 
   // Get latest km for each vehicle — manual takes priority, then from records
-  const getLatestKm = (vehicleId) => {
-    // Get highest km from records (most recent date)
-    const vRecs = records.filter(r => r.vehicle_id === vehicleId && r.km).sort((a, b) => b.date.localeCompare(a.date));
-    const recordKm = vRecs.reduce((m, r) => Math.max(m, Number(r.km)), 0);
-    // Get manual km
-    const synced = vehicleKm.find(c => c.key === "km_" + vehicleId);
-    const manual = Math.max(manualKm[vehicleId] ? Number(manualKm[vehicleId]) : 0, synced ? Number(synced.value) : 0);
-    // Use the highest value
-    const best = Math.max(recordKm, manual);
-    return best > 0 ? best : null;
-  };
+  const getLatestKm = (vehicleId) => latestKm(vehicleId, records, vehicleKm);
+
 
   const saveManualKm = async (vehicleId) => {
     const km = parseInt(kmInput);
     if (!km || km <= 0) { showToast("Ingresá un km válido"); return; }
     const key = "km_" + vehicleId;
     try {
-      if (vehicleKm.some(c => c.key === key)) await supa("config?key=eq." + key, "PATCH", { value: String(km) });
-      else await supa("config", "POST", { key, value: String(km) });
-      setVehicleKm(prev => [...prev.filter(c => c.key !== key), { key, value: String(km) }]);
+      if (vehicleKm.some(c => c.key === key)) await supa("config?key=eq." + key, "PATCH", { value: km + "|" + Date.now() });
+      else await supa("config", "POST", { key, value: km + "|" + Date.now() });
+      setVehicleKm(prev => [...prev.filter(c => c.key !== key), { key, value: km + "|" + Date.now() }]);
     } catch { showToast("Error al sincronizar km. Intentá de nuevo."); return; }
     setManualKm(prev => ({ ...prev, [vehicleId]: km }));
     try { localStorage.setItem("flota_km_" + vehicleId, km); } catch {}
@@ -2714,3 +2729,7 @@ function ImgUpload({ preview, label, onChange }) {
 // v20261110224813
 
 // v20261110225039
+
+// v20261119161721
+
+// v20261119162024
